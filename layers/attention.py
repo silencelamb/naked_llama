@@ -34,22 +34,23 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, mask):
     value = torch.matmul(hidden_states, w_v)
     
     head_dim = query.shape[2] // num_heads
-
-    # 将权重矩阵分割成多个头并应用于 Q, K, V
+    
+    
+    # 将Q, K, V矩阵分割成多个头, [batch_size, heads, seq_len, head_dim]
+    # 先 view， 然后transpose
     query = query.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
     key = key.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
     value = value.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
     
-    # 将权重矩阵分割成多个头并应用于 Q, K, V,  另一种写法
+    # 将Q, K, V矩阵分割成多个头,  另一种写法
     # query = query.view(batch_size, seq_len, num_heads, head_dim).permute(0, 2, 1, 3)
     # key = key.view(batch_size, seq_len, num_heads, head_dim).permute(0, 2, 1, 3)
     # value = value.view(batch_size, seq_len, num_heads, head_dim).permute(0, 2, 1, 3)
     
     # ROPE计算
-    # kv_seq_len = seq_len
-    # cos, sin = get_rope_embeddings(value, seq_len=kv_seq_len)
-    # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
-    
+    cos, sin = get_rope_embeddings(value, seq_len=seq_len)
+    query, key = apply_rotary_pos_emb(query, key, cos, sin, position_ids=None)
+
     # 注意力机制
     attention_output = scaled_dot_product_attention(query, key, value, mask)
     

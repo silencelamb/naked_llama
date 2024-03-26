@@ -1,6 +1,7 @@
 import torch
 from utils import npy_to_tensor
 from layers.norm import RMSNorm
+from layers.rope import init_rope_embeddings
 from layers.embedding import embedding_lookup
 from layers.matmul import LlamaMLP, lm_head
 from layers.transformer_block import llama2_transformer_block
@@ -15,8 +16,6 @@ def llama2_7b(token_ids: torch.Tensor):
     - token_ids: token id组成的tensor，形状为 [batch_size, seq_length]
     """
     bsz, seq_length = token_ids.shape
-    
-    
     # embedding 
     embdding_weights = npy_to_tensor('weights/llama2_7b/model.embed_tokens.weight.npy')
     input_embeds = embedding_lookup(token_ids, embdding_weights)
@@ -53,8 +52,11 @@ def llama2_7b(token_ids: torch.Tensor):
 
 if __name__ == '__main__':
     # test case
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+    # initial rope embeddings
+    init_rope_embeddings(dim=128)
     
+    # tokenization
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
     prompt = "Hey, are you conscious? Can you talk to me?"
     inputs = tokenizer(prompt, return_tensors="pt")
     token_ids = inputs.input_ids
