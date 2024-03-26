@@ -4,7 +4,7 @@ from .norm import RMSNorm
 from .matmul import LlamaMLP
 from utils import npy_to_tensor
 
-def llama2_transformer_block(hidden_states, mask, num_heads, layer_id, use_cache=False, present_key_value=None):
+def llama2_transformer_block(hidden_states, num_heads, layer_id, attention_mask=None, use_cache=False, present_key_value=None):
     
     
     w_q = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.q_proj.weight.npy')
@@ -19,7 +19,7 @@ def llama2_transformer_block(hidden_states, mask, num_heads, layer_id, use_cache
     hidden_states = RMSNorm(hidden_states, weight=input_norm_weight, eps=1e-6)
     
     # 多头自注意力层
-    hidden_states = multi_head_attention(hidden_states, w_q, w_k, w_v, w_o,num_heads)
+    hidden_states = multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, attention_mask)
     # 残差连接
     hidden_states = residual + hidden_states  
     

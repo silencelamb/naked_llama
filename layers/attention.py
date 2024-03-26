@@ -2,7 +2,7 @@ import torch
 import math
 from .rope import get_rope_embeddings, apply_rotary_pos_emb
 
-def scaled_dot_product_attention(query, key, value):
+def scaled_dot_product_attention(query, key, value, attention_mask):
     
     head_dim = query.size(-1)  # 获取 头的维度
     # transpose key
@@ -14,13 +14,16 @@ def scaled_dot_product_attention(query, key, value):
     
     # one line code : attn_weights = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(head_dim)
     
+    if attention_mask is not None:
+        scaled_scores = scaled_scores + attention_mask
     # softmax
     attention_weights = torch.softmax(scaled_scores, dim=-1)
+    
     # weighted sum
     output = torch.matmul(attention_weights, value)
     return output
 
-def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads):
+def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, mask):
     """
     """
     batch_size, seq_len, hidden_size = hidden_states.shape[0:3]
@@ -48,7 +51,7 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads):
     # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
     
     # 注意力机制
-    attention_output = scaled_dot_product_attention(query, key, value)
+    attention_output = scaled_dot_product_attention(query, key, value, mask)
     
     # 重新组合多头的输出
     attention_output = attention_output.transpose(1, 2).contiguous()
