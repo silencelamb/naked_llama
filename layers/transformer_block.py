@@ -1,21 +1,21 @@
 import torch
-from attention import multi_head_attention
-from norm import RMSNorm
-from matmul import LlamaMLP
-from utils import loaded_numpy_array
+from .attention import multi_head_attention
+from .norm import RMSNorm
+from .matmul import LlamaMLP
+from utils import npy_to_tensor
 
 def llama2_transformer_block(hidden_states, mask, num_heads, layer_id, use_cache=False, present_key_value=None):
     
     
-    w_q = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.q_proj.weight.npy')
-    w_k = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.k_proj.weight.npy')
-    w_v = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.v_proj.weight.npy')
-    w_o = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.out_proj.weight.npy')
+    w_q = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.q_proj.weight.npy')
+    w_k = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.k_proj.weight.npy')
+    w_v = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.v_proj.weight.npy')
+    w_o = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.o_proj.weight.npy')
     
     residual = hidden_states
     
     # input RMS Norm
-    input_norm_weight = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.input_layernorm.weight.npy')
+    input_norm_weight = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.input_layernorm.weight.npy')
     hidden_states = RMSNorm(hidden_states, weight=input_norm_weight, eps=1e-6)
     
     # 多头自注意力层
@@ -27,13 +27,13 @@ def llama2_transformer_block(hidden_states, mask, num_heads, layer_id, use_cache
     # FFN 计算部分
     residual = hidden_states
     # post attention RMS Norm
-    post_att_norm_weight = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.post_attention_layernorm.weight.npy')
+    post_att_norm_weight = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.post_attention_layernorm.weight.npy')
     hidden_states = RMSNorm(hidden_states, weight=post_att_norm_weight, eps=1e-6)
     
     # FFN up & FFN gate & FFN down
-    w_up = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.mlp.up_proj.weight.npy')
-    w_gate = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.mlp.gate_proj.weight.npy')
-    w_down = loaded_numpy_array(f'weights/llama2_7b/model.layers.{layer_id}.mlp.down_proj.weight.npy')
+    w_up = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.up_proj.weight.npy')
+    w_gate = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.gate_proj.weight.npy')
+    w_down = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.down_proj.weight.npy')
     hidden_states = LlamaMLP(hidden_states, w_up, w_gate, w_down)
     
     

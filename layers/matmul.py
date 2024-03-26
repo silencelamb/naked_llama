@@ -4,9 +4,9 @@ import torch.nn as nn
 def MLP(x, weight, bias=None):
     # 全连接层/矩阵乘
     if bias is None:
-        output = torch.matmul(x, weight)
+        output = torch.matmul(x, weight.T)
     else:
-        output = torch.matmul(x, weight) + bias
+        output = torch.matmul(x, weight.T) + bias
     return output
 
 def FFN_up(x, weight, bias=None):

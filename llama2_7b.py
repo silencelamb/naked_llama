@@ -4,6 +4,7 @@ from layers.norm import RMSNorm
 from layers.embedding import embedding_lookup
 from layers.matmul import LlamaMLP, lm_head
 from layers.transformer_block import llama2_transformer_block
+from transformers import AutoTokenizer, LlamaForCausalLM
 
 
 def llama2_7b(token_ids: torch.Tensor):
@@ -13,7 +14,7 @@ def llama2_7b(token_ids: torch.Tensor):
     参数:
     - token_ids: token id组成的tensor，形状为 [batch_size, seq_length]
     """
-    bsz, seq_length = token_ids.shape()
+    bsz, seq_length = token_ids.shape
     
     # em  
     embding_weights = npy_to_tensor('weights/llama2_7b/model.embed_tokens.weight.npy')
@@ -39,10 +40,35 @@ def llama2_7b(token_ids: torch.Tensor):
     # 重复32次 llama2_transformer_block 的计算
     
     for layer_id in range(32):
-        output = llama2_transformer_block(hidden_states, mask=None, num_heads=None, layer_id=layer_id)
+        output = llama2_transformer_block(hidden_states, mask=None, num_heads=32, layer_id=layer_id)
         hidden_states = output[0]
     
     hidden_states = RMSNorm(hidden_states, layer_id)
-    logits = lm_head(hidden_states)
+    lm_head_weight = npy_to_tensor('weights/llama2_7b/lm_head.weight.npy')
+    logits = lm_head(hidden_states, lm_head_weight)
     return logits
+
+
+if __name__ == '__main__':
+    # test case
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+    
+    prompt = "Hey, are you conscious? Can you talk to me?"
+    inputs = tokenizer(prompt, return_tensors="pt")
+    token_ids = inputs.input_ids
+
+    # random input
+    # token_ids = torch.randint(0, 32000, (1, 1024))
+    # token_ids = torch.repeat_interleave(token_ids, 2, dim=0)
+    # token_ids = torch.repeat_interleave(token_ids, 4, dim=1) # (2, 52)
+
+    # check result
+    # model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
+    # cpu_res = llama(input_ids).logits
+    
+    logits = llama2_7b(token_ids)
+    print(logits.shape)
+    print(logits)
+
+
     
