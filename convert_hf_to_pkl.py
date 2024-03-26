@@ -2,6 +2,7 @@ import torch
 from transformers import AutoTokenizer, LlamaForCausalLM
 import numpy as np
 import os
+import torch
 
 model = 'llama2_7b'
 
@@ -15,15 +16,18 @@ model_configs = {
 }
 
 config = model_configs[model]
-model = LlamaForCausalLM.from_pretrained(config['hf_model'])
 # tokenizer = AutoTokenizer.from_pretrained(config['tokenizer'])
 
 # Create a directory to save the layers
 os.makedirs(config['weights_dir'], exist_ok=True)
 
-# Iterate over the layers
-for w_name, layer in model.named_parameters():
-    # 保存数组到 .npy 文件
-    print(f'Layer {w_name}, shape {layer.shape}')
-    f_name = os.path.join(config['weights_dir'], f'{w_name}.npy')
-    np.save(f_name, layer.detach().cpu().numpy())
+with torch.inference_mode():
+    model = LlamaForCausalLM.from_pretrained(config['hf_model'])
+    # Iterate over the layers
+    for w_name, layer in model.named_parameters():
+        # 保存数组到 .npy 文件
+        print(f'Layer {w_name}, shape {layer.shape}')
+        f_name = os.path.join(config['weights_dir'], f'{w_name}.npy')
+        w_tensor = layer.detach()
+        w_tensor = w_tensor.to(torch.float16)
+        np.save(f_name, w_tensor.cpu().numpy())
