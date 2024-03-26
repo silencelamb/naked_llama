@@ -68,12 +68,17 @@ if __name__ == '__main__':
 
 
     logits = llama2_7b(token_ids)
-    print(logits.shape)
+    print('Naked llama result:')
     print(logits)
     
     # check result
     model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
-    cpu_res = model(input_ids = token_ids)
-    import pdb; pdb.set_trace()
+    model.eval()
+    with torch.inference_mode():
+        hf_res = model(input_ids = token_ids)
+        print('Hugging face llama result:')
+        print(hf_res.logits)
+    error = torch.abs(hf_res.logits-logits)
+    print(f"Compare error sum: {torch.sum(error)}") 
 
     
