@@ -18,7 +18,6 @@ def scaled_dot_product_attention(query, key, value, attention_mask):
         scaled_scores = scaled_scores + attention_mask
     # softmax
     attention_weights = torch.softmax(scaled_scores, dim=-1)
-    
     # weighted sum
     output = torch.matmul(attention_weights, value)
     return output
@@ -29,12 +28,11 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, mask):
     batch_size, seq_len, hidden_size = hidden_states.shape[0:3]
     
     # 线性变换
-    query = torch.matmul(hidden_states, w_q)
-    key = torch.matmul(hidden_states, w_k)
-    value = torch.matmul(hidden_states, w_v)
+    query = torch.matmul(hidden_states, w_q.T)
+    key = torch.matmul(hidden_states, w_k.T)
+    value = torch.matmul(hidden_states, w_v.T)
     
     head_dim = query.shape[2] // num_heads
-    
     
     # 将Q, K, V矩阵分割成多个头, [batch_size, heads, seq_len, head_dim]
     # 先 view， 然后transpose
@@ -49,11 +47,18 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, mask):
     
     # ROPE计算
     cos, sin = get_rope_embeddings(value, seq_len=seq_len)
-    query, key = apply_rotary_pos_emb(query, key, cos, sin, position_ids=None)
+    past_key_values_length = 0
+
+    device = hidden_states.device
+    position_ids = torch.arange(
+        past_key_values_length, seq_len + past_key_values_length, dtype=torch.long, device=device
+    )
+    position_ids = position_ids.unsqueeze(0)
+    query, key = apply_rotary_pos_emb(query, key, cos, sin, position_ids=position_ids)
 
     # 注意力机制
     attention_output = scaled_dot_product_attention(query, key, value, mask)
-    
+
     # 重新组合多头的输出
     attention_output = attention_output.transpose(1, 2).contiguous()
     attention_output = attention_output.reshape(batch_size, seq_len, hidden_size)
@@ -63,7 +68,7 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, mask):
     # attention_output = attention_output.view(batch_size, seq_len, -1)
     
     # 输出线性变换
-    output = torch.matmul(attention_output, w_o)
+    output = torch.matmul(attention_output, w_o.T)
     
     return output
 

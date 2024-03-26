@@ -13,22 +13,22 @@ def llama2_transformer_block(hidden_states, num_heads, layer_id, attention_mask=
     w_o = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.o_proj.weight.npy')
     
     residual = hidden_states
-    
     # input RMS Norm
     input_norm_weight = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.input_layernorm.weight.npy')
-    hidden_states = RMSNorm(hidden_states, weight=input_norm_weight, eps=1e-6)
+    hidden_states = RMSNorm(hidden_states, weight=input_norm_weight, eps=1e-5)
     
     # 多头自注意力层
+    
     hidden_states = multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, attention_mask)
+    
     # 残差连接
     hidden_states = residual + hidden_states  
-    
 
     # FFN 计算部分
     residual = hidden_states
     # post attention RMS Norm
     post_att_norm_weight = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.post_attention_layernorm.weight.npy')
-    hidden_states = RMSNorm(hidden_states, weight=post_att_norm_weight, eps=1e-6)
+    hidden_states = RMSNorm(hidden_states, weight=post_att_norm_weight, eps=1e-5)
     
     # FFN up & FFN gate & FFN down
     w_up = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.up_proj.weight.npy')

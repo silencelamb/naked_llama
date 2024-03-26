@@ -38,13 +38,13 @@ def llama2_7b(token_ids: torch.Tensor):
             torch.zeros((seq_length, start_pos), device=token_ids.device),
             mask
         ]).type_as(hidden_states)
-
     # 重复32次 llama2_transformer_block 的计算
     for layer_id in range(32):
         output = llama2_transformer_block(hidden_states, num_heads=32, layer_id=layer_id, attention_mask=mask)
         hidden_states = output[0]
     
-    hidden_states = RMSNorm(hidden_states, layer_id)
+    norm_weight = npy_to_tensor('weights/llama2_7b/model.norm.weight.npy')
+    hidden_states = RMSNorm(hidden_states, norm_weight, eps=1e-5)
     lm_head_weight = npy_to_tensor('weights/llama2_7b/lm_head.weight.npy')
     logits = lm_head(hidden_states, lm_head_weight)
     return logits
@@ -66,13 +66,14 @@ if __name__ == '__main__':
     # token_ids = torch.repeat_interleave(token_ids, 2, dim=0)
     # token_ids = torch.repeat_interleave(token_ids, 4, dim=1) # (2, 52)
 
-    # check result
-    # model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
-    # cpu_res = llama(input_ids).logits
-    
+
     logits = llama2_7b(token_ids)
     print(logits.shape)
     print(logits)
-
+    
+    # check result
+    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
+    cpu_res = model(input_ids = token_ids)
+    import pdb; pdb.set_trace()
 
     

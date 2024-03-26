@@ -65,4 +65,4 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     return q_embed, k_embed
 
 if __name__ == '__main__':
-    init_rope_embeddings(dim=4096)
+    init_rope_embeddings(dim=128)
