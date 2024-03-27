@@ -7,13 +7,13 @@ from configuration_llama import LlamaConfig
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
     This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
-    num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    num_kv_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
     """
-    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    batch, num_kv_heads, slen, head_dim = hidden_states.shape
     if n_rep == 1:
         return hidden_states
-    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_kv_heads, n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_kv_heads * n_rep, slen, head_dim)
 
 
 
@@ -42,8 +42,8 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, config: LlamaConfig,
     """
         
     num_heads = config.num_attention_heads
-    num_key_value_heads = config.num_key_value_heads
-    num_key_value_groups = num_heads // num_key_value_heads
+    num_kv_heads = config.num_key_value_heads
+    num_kv_groups = num_heads // num_kv_heads
     
     
     batch_size, seq_len, hidden_size = hidden_states.shape[0:3]
@@ -58,13 +58,13 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, config: LlamaConfig,
     # 将Q, K, V矩阵分割成多个头, [batch_size, heads, seq_len, head_dim]
     # 先 view， 然后transpose
     query = query.view(batch_size, seq_len, num_heads, head_dim).transpose(1, 2)
-    key = key.view(batch_size, seq_len, num_key_value_heads, head_dim).transpose(1, 2)
-    value = value.view(batch_size, seq_len, num_key_value_heads, head_dim).transpose(1, 2)
+    key = key.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
+    value = value.view(batch_size, seq_len, num_kv_heads, head_dim).transpose(1, 2)
     
     # 将Q, K, V矩阵分割成多个头,  另一种写法
     # query = query.view(batch_size, seq_len, num_heads, head_dim).permute(0, 2, 1, 3)
-    # key = key.view(batch_size, seq_len, num_key_value_heads, head_dim).permute(0, 2, 1, 3)
-    # value = value.view(batch_size, seq_len, num_key_value_heads, head_dim).permute(0, 2, 1, 3)
+    # key = key.view(batch_size, seq_len, num_kv_heads, head_dim).permute(0, 2, 1, 3)
+    # value = value.view(batch_size, seq_len, num_kv_heads, head_dim).permute(0, 2, 1, 3)
     
     # ROPE计算
     cos, sin = get_rope_embeddings(value, seq_len=seq_len)
@@ -77,9 +77,9 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, config: LlamaConfig,
     position_ids = position_ids.unsqueeze(0)
     query, key = apply_rotary_pos_emb(query, key, cos, sin, position_ids=position_ids)
 
-    # 重复多头, 对于 7B num_key_value_groups=32/32=1， 对于 70B num_key_value_groups=64/8=8
-    key = repeat_kv(key, num_key_value_groups)
-    value = repeat_kv(value, num_key_value_groups)
+    # 重复多头, 对于 7B num_kv_groups=32/32=1， 对于 70B num_kv_groups=64/8=8
+    key = repeat_kv(key, num_kv_groups)
+    value = repeat_kv(value, num_kv_groups)
 
     # 注意力机制
     attention_output = scaled_dot_product_attention(query, key, value, mask)

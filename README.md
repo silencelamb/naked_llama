@@ -12,7 +12,7 @@ pip install transformers >= 4.35.2
 
 ```
 
-## excute
+## excute & result
 
 ```bash
 git clone https://github.com/silencelamb/naked_llama.git
@@ -20,10 +20,17 @@ git clone https://github.com/silencelamb/naked_llama.git
 # default model_size is 7b
 python naked_llama.py
 
+```
+
+![llama2 7B](llama2_7b_image.png)
+
+```bash
 # run 70 b
 python naked_llama.py --model_size 70b
 
 ```
+
+![llama2 70B](llama2_70b_image.png)
 
 ## references
 
