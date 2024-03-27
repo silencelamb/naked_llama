@@ -17,6 +17,9 @@ pip install transformers >= 4.35.2
 ```bash
 git clone https://github.com/silencelamb/naked_llama.git
 
+# convert huggingface model to npy file
+python convert_hf_to_pkl.py  # default model_size is 7b
+
 # default model_size is 7b
 python naked_llama.py
 
@@ -31,7 +34,6 @@ python naked_llama.py --model_size 70b
 ```
 
 <img src="llama2_70b_image.png" width="800">
-
 
 ## references
 
