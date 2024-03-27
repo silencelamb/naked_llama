@@ -12,6 +12,11 @@ model_configs = {
         'hf_model': 'meta-llama/Llama-2-7b-hf',
         'tokenizer': 'meta-llama/Llama-2-7b-hf',
         'weights_dir': 'weights/llama2_7b/'
+    },
+    'llama2_70b': {
+        'hf_model': 'meta-llama/Llama-2-70b-hf',
+        'tokenizer': 'meta-llama/Llama-2-70b-hf',
+        'weights_dir': 'weights/llama2_70b/'
     }
 }
 
