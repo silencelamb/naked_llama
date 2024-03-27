@@ -155,6 +155,7 @@ class LlamaConfig():
         self._rope_scaling_validation()
         self.attention_bias = attention_bias
         self.weights_dir = weights_dir
+        self.model_name = kwargs.pop("_name_or_path", None)
 
     def _rope_scaling_validation(self):
         """

@@ -29,7 +29,7 @@ def llama2(token_ids: torch.Tensor, config: LlamaConfig):
 
     # 重复 32次(7B)/ 80次(70B) llama2_transformer_block 的计算
     for layer_id in range(config.num_hidden_layers):
-        print(f'Naked llama: Computing Layer {layer_id}')
+        print(f'Naked llama: Computing {config.model_name} Layer {layer_id}')
         output = llama2_transformer_block(hidden_states, config, layer_id=layer_id, attention_mask=mask)
         hidden_states = output[0]
     
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     config.weights_dir = model_dict[model_name]['weights_dir']
     logits = llama2(token_ids, config)
     
-    print('Naked llama result:')
+    print(f'Naked llama, model: {config.model_name}, result:')
     print(logits)
     
     # check result
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     model.eval()
     with torch.inference_mode():
         hf_res = model(input_ids = token_ids)
-        print('Hugging face llama result:')
+        print(f'Hugging face, model: {config.model_name}, result:')
         print(hf_res.logits)
     error = torch.abs(hf_res.logits-logits)
     print(f"Compare error sum: {torch.sum(error)}") 
