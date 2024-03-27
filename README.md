@@ -22,7 +22,7 @@ python naked_llama.py
 
 ```
 
-![llama2 7B](llama2_7b_image.png)
+<img src="llama2_7b_image.png" width="800">
 
 ```bash
 # run 70 b
@@ -30,7 +30,8 @@ python naked_llama.py --model_size 70b
 
 ```
 
-![llama2 70B](llama2_70b_image.png)
+<img src="llama2_70b_image.png" width="800">
+
 
 ## references
 
