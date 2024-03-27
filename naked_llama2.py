@@ -29,7 +29,7 @@ def llama2(token_ids: torch.Tensor, config: LlamaConfig):
 
     # 重复 32次(7B)/ 80次(70B) llama2_transformer_block 的计算
     for layer_id in range(config.num_hidden_layers):
-        print(f'Naked llama2: Computing Layer {layer_id}')
+        print(f'Naked llama: Computing Layer {layer_id}')
         output = llama2_transformer_block(hidden_states, config, layer_id=layer_id, attention_mask=mask)
         hidden_states = output[0]
     
@@ -57,11 +57,13 @@ if __name__ == '__main__':
     model_dict = {
         "llama2_7b": {
             'tokenizer': 'meta-llama/Llama-2-7b-hf',
+            'hf_model': 'meta-llama/Llama-2-7b-hf',
             'config_path': 'configs/llama2_7b_config.json',
             'weights_dir': 'weights/llama2_7b/'
         },
         "llama2_70b": {
             'tokenizer': 'meta-llama/Llama-2-70b-hf',
+            'hf_model': 'meta-llama/Llama-2-70b-hf',
             'config_path': 'configs/llama2_70b_config.json',
             'weights_dir': 'weights/llama2_70b/'
         }
@@ -89,7 +91,7 @@ if __name__ == '__main__':
     print(logits)
     
     # check result
-    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
+    model = LlamaForCausalLM.from_pretrained(model_dict[model_name]['hf_model'])
     model.eval()
     with torch.inference_mode():
         hf_res = model(input_ids = token_ids)

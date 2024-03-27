@@ -1,25 +1,31 @@
+import os.path as osp
 import torch
 from .attention import multi_head_attention
 from .norm import RMSNorm
 from .matmul import LlamaMLP
 from utils import npy_to_tensor
+from configuration_llama import LlamaConfig
 
-def llama2_transformer_block(hidden_states, num_heads, layer_id, attention_mask=None, use_cache=False, present_key_value=None):
-    
-    
-    w_q = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.q_proj.weight.npy')
-    w_k = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.k_proj.weight.npy')
-    w_v = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.v_proj.weight.npy')
-    w_o = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.self_attn.o_proj.weight.npy')
+def llama2_transformer_block(hidden_states,
+                             config: LlamaConfig, 
+                             layer_id, 
+                             attention_mask=None, 
+                             use_cache=False, 
+                             present_key_value=None):
+
+    w_q = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.q_proj.weight.npy'))
+    w_k = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.k_proj.weight.npy'))
+    w_v = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.v_proj.weight.npy'))
+    w_o = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.o_proj.weight.npy'))
     
     residual = hidden_states
     # input RMS Norm
-    input_norm_weight = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.input_layernorm.weight.npy')
-    hidden_states = RMSNorm(hidden_states, weight=input_norm_weight, eps=1e-5)
+    input_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.input_layernorm.weight.npy'))
+    hidden_states = RMSNorm(hidden_states, weight=input_norm_weight, eps=config.rms_norm_eps)
     
     # 多头自注意力层
     
-    hidden_states = multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, num_heads, attention_mask)
+    hidden_states = multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, config, attention_mask)
     
     # 残差连接
     hidden_states = residual + hidden_states  
@@ -27,13 +33,13 @@ def llama2_transformer_block(hidden_states, num_heads, layer_id, attention_mask=
     # FFN 计算部分
     residual = hidden_states
     # post attention RMS Norm
-    post_att_norm_weight = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.post_attention_layernorm.weight.npy')
-    hidden_states = RMSNorm(hidden_states, weight=post_att_norm_weight, eps=1e-5)
+    post_att_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.post_attention_layernorm.weight.npy'))
+    hidden_states = RMSNorm(hidden_states, weight=post_att_norm_weight, eps=config.rms_norm_eps)
     
     # FFN up & FFN gate & FFN down
-    w_up = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.up_proj.weight.npy')
-    w_gate = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.gate_proj.weight.npy')
-    w_down = npy_to_tensor(f'weights/llama2_7b/model.layers.{layer_id}.mlp.down_proj.weight.npy')
+    w_up = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.up_proj.weight.npy'))
+    w_gate = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.gate_proj.weight.npy'))
+    w_down = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.down_proj.weight.npy'))
     hidden_states = LlamaMLP(hidden_states, w_up, w_gate, w_down)
     
     
