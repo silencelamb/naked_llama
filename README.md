@@ -1,6 +1,13 @@
 # naked_llama
 
-build llama inference compute from scrath, only using torch/numpy base ops
+Build llama inference compute from scrath, only using torch/numpy base ops
+
+Inspired by karpathy's awesome repo [nanoGPT](https://github.com/karpathy/nanoGPT), I re-implemented  a simple and clear llama model from scratch.
+
+
+<div style="text-align: center;">
+    <img src="llama-in-framwork_vs_naked-llama.png" width="500">
+</div>
 
 ## install
 
@@ -24,6 +31,7 @@ python convert_hf_to_pkl.py  # default model_size is 7b
 python naked_llama.py
 
 ```
+
 
 <img src="llama2_7b_image.png" width="500">
 
