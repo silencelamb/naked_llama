@@ -1,11 +1,11 @@
-# naked_llama
+# Naked LLaMA
 
 Build llama inference compute from scrath, only using torch/numpy base ops
 
 Inspired by karpathy's awesome repo [nanoGPT](https://github.com/karpathy/nanoGPT), I re-implemented  a simple and clear llama model from scratch.
 
 <p align="center">
-  <img width="380" src="llama-in-framwork_vs_naked-llama.png">
+  <img width="420" src="llama-in-framwork_vs_naked-llama.png">
 </p>
 
 ## install
