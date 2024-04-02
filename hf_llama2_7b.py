@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from enum import Enum
 
 
-PROMPT_FORWARD = 0b000001                     # 1、 一次性prompt的forward
+PROMPT_FORWARD = 0b000001             # 1、 一次性prompt的forward
 HF_GENERATE = 0b0000010               # 2、 HF's model.generate
 HF_STREAM_GENERATE = 0b0000100        # 3、 流式generate，model.generate传入TextStreamer，实现有word结果立即显示
 FORWARD = 0b000001000                 # 4、 自己写的，每次只生成一个token，每次都是新的token与已有序列拼到一起，然后forward
