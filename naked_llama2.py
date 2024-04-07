@@ -43,6 +43,7 @@ def llama2(token_ids: torch.Tensor, config: LlamaConfig):
 
 
 if __name__ == '__main__':
+    torch.set_printoptions(linewidth=200)   # 这样打印 mask 不会存在折叠的问题
     parser = argparse.ArgumentParser(description='nake.')
     parser.add_argument('--model_size', type=str, 
                         help='prammeter size of the llama2 model to use', 
