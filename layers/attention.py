@@ -98,5 +98,18 @@ def multi_head_attention(hidden_states, w_q, w_k, w_v, w_o, config: LlamaConfig,
     return output
 
 if __name__ == '__main__':
-    pass
-    # test case
+    torch.manual_seed(65536)
+    torch.set_printoptions(linewidth=200)         # 这样打印不会存在折叠的问题
+    # 设置测试参数
+    batch_size, num_kv_heads, sequence_length, head_dimension = 1, 2, 4, 3
+    n_rep = 2  # 重复次数
+
+    # 创建一个随机初始化的隐藏状态张量
+    hidden_states = torch.randn(batch_size, num_kv_heads, sequence_length, head_dimension)
+
+    # 调用函数
+    output = repeat_kv(hidden_states, n_rep)
+
+    # 打印原始张量和输出张量的形状
+    print("原始张量形状:", hidden_states.shape)
+    print("输出张量形状:", output.shape)    

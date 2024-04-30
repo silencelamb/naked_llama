@@ -7,6 +7,8 @@ from enum import Enum
 
 torch.set_printoptions(linewidth=200)         # 这样打印mask不会存在折叠的问题
 
+USE_CUDA = False
+
 PROMPT_FORWARD = 0b000001                     # 1、 一次性prompt的forward
 HF_GENERATE = 0b0000010                       # 2、 HF's model.generate
 HF_STREAM_GENERATE = 0b0000100                # 3、 流式generate，model.generate传入TextStreamer，实现有word结果立即显示
@@ -29,7 +31,7 @@ StaticCache
 # ModeSwitch = PROMPT_FORWARD | HF_GENERATE | HF_STREAM_GENERATE | FORWARD | FORWARD_KV_CACHE | FORWARD_HF_DYNAMIC_CACHE | FORWARD_HF_STATIC_CACHE
 # ModeSwitch = FORWARD_KV_CACHE | FORWARD_HF_DYNAMIC_CACHE
 # ModeSwitch = FORWARD_KV_CACHE | FORWARD_HF_STATIC_CACHE
-ModeSwitch = FORWARD_HF_STATIC_CACHE
+ModeSwitch = FORWARD_KV_CACHE
 
 if __name__ == '__main__':
     
@@ -41,6 +43,9 @@ if __name__ == '__main__':
     token_ids = inputs.input_ids
     # check result
     model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
+    if USE_CUDA:
+        token_ids = token_ids.cuda()
+        model = model.cuda()
     
     with torch.inference_mode():
         ########### 1、promt forward ####################

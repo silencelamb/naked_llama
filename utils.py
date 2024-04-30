@@ -35,3 +35,12 @@ def get_attentioin_mask(start_pos, seq_length, ref_tensor):
     else:
         mask = None
     return mask
+
+
+if __name__ == '__main__':
+    w_q = npy_to_tensor('weights/llama2_7b/model.layers.0.self_attn.q_proj.weight.npy')
+    print(w_q.shape)
+    config = load_llama_config('configs/llama2_7b_config.json')
+    mask = get_attentioin_mask(0, 5, w_q)
+    print(mask)
+    print(mask.shape)
