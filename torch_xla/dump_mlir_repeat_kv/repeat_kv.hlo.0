@@ -1,0 +1,28 @@
+[ScheduleSyncTensorsGraph]
+TensorsGraphInfo:
+  mark_step (/code/pytorch/torch-xla/torch_xla/core/xla_model.py:816)
+  <module> (/code/naked_llama/torch_xla/repeat_kv_dump_mhlo.py:26)
+
+Hashes: (bbd2153c1bf6354fd5926c4dc7183f54, ebaf88fa876698410d9f9b40127a7321)
+
+## BEGIN_GRAPH
+HloModule IrToHlo.12, entry_computation_layout={(f32[1,2,4,3]{3,2,1,0})->(f32[1,2,4,3]{3,2,1,0}, f32[1,4,4,3]{3,2,1,0})}
+
+%fused_computation (param_0.2: f32[1,2,4,3]) -> f32[1,4,4,3] {
+  %param_0.2 = f32[1,2,4,3]{3,2,1,0} parameter(0)
+  %bitcast.3 = f32[2,4,3]{2,1,0} bitcast(f32[1,2,4,3]{3,2,1,0} %param_0.2)
+  %broadcast.1 = f32[1,2,2,4,3]{4,3,2,1,0} broadcast(f32[2,4,3]{2,1,0} %bitcast.3), dimensions={1,3,4}
+  ROOT %bitcast.2 = f32[1,4,4,3]{3,2,1,0} bitcast(f32[1,2,2,4,3]{4,3,2,1,0} %broadcast.1)
+}
+
+ENTRY %IrToHlo.12 (p0.1: f32[1,2,4,3]) -> (f32[1,2,4,3], f32[1,4,4,3]) {
+  %p0.1 = f32[1,2,4,3]{3,2,1,0} parameter(0)
+  %copy = f32[1,2,4,3]{3,2,1,0} copy(f32[1,2,4,3]{3,2,1,0} %p0.1)
+  %fusion = f32[1,4,4,3]{3,2,1,0} fusion(f32[1,2,4,3]{3,2,1,0} %p0.1), kind=kLoop, calls=%fused_computation
+  ROOT %tuple = (f32[1,2,4,3]{3,2,1,0}, f32[1,4,4,3]{3,2,1,0}) tuple(f32[1,2,4,3]{3,2,1,0} %copy, f32[1,4,4,3]{3,2,1,0} %fusion)
+}
+
+
+## END_GRAPH
+
+

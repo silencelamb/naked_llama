@@ -1,0 +1,34 @@
+[ScheduleSyncTensorsGraph]
+TensorsGraphInfo:
+  mark_step (/code/pytorch/torch-xla/torch_xla/core/xla_model.py:816)
+  <module> (/code/naked_llama/torch_xla/casual_mask_dump_mhlo.py:21)
+
+Hashes: (d7d0bef8836813f48ed771d70ef5865d, f253dbff1541a5b529ae26831331ed0a)
+
+## BEGIN_GRAPH
+HloModule IrToHlo.26, entry_computation_layout={(f32[2,2]{1,0}, f32[])->(f32[2,2]{1,0}, f32[5,8]{1,0})}
+
+%fused_computation (param_0.3: f32[]) -> f32[5,8] {
+  %iota.3 = s32[5,5]{1,0} iota(), iota_dimension=0
+  %iota.2 = s32[5,5]{1,0} iota(), iota_dimension=1
+  %compare.0 = pred[5,5]{1,0} compare(s32[5,5]{1,0} %iota.3, s32[5,5]{1,0} %iota.2), direction=GE
+  %constant.2 = f32[] constant(0)
+  %broadcast.2 = f32[5,5]{1,0} broadcast(f32[] %constant.2), dimensions={}
+  %param_0.3 = f32[] parameter(0)
+  %broadcast.1 = f32[5,5]{1,0} broadcast(f32[] %param_0.3), dimensions={}
+  %select.0 = f32[5,5]{1,0} select(pred[5,5]{1,0} %compare.0, f32[5,5]{1,0} %broadcast.2, f32[5,5]{1,0} %broadcast.1)
+  ROOT %pad.1 = f32[5,8]{1,0} pad(f32[5,5]{1,0} %select.0, f32[] %constant.2), padding=0_0x3_0
+}
+
+ENTRY %IrToHlo.26 (p0.1: f32[2,2], p1.2: f32[]) -> (f32[2,2], f32[5,8]) {
+  %p0.1 = f32[2,2]{1,0} parameter(0)
+  %copy = f32[2,2]{1,0} copy(f32[2,2]{1,0} %p0.1)
+  %p1.2 = f32[] parameter(1)
+  %fusion = f32[5,8]{1,0} fusion(f32[] %p1.2), kind=kLoop, calls=%fused_computation
+  ROOT %tuple = (f32[2,2]{1,0}, f32[5,8]{1,0}) tuple(f32[2,2]{1,0} %copy, f32[5,8]{1,0} %fusion)
+}
+
+
+## END_GRAPH
+
+
