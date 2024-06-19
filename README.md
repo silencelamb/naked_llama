@@ -32,7 +32,7 @@ python naked_llama.py
 ```
 
 
-<img src="imgs/lama2_7b_image.png" width="500">
+<img src="imgs/llama2_7b_image.png" width="500">
 
 ```bash
 # run 70 b
