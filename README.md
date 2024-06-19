@@ -5,7 +5,7 @@ Build llama inference compute from scrath, only using torch/numpy base ops
 Inspired by karpathy's awesome repo [nanoGPT](https://github.com/karpathy/nanoGPT), I re-implemented  a simple and clear llama model from scratch.
 
 <p align="center">
-  <img width="420" src="llama-in-framwork_vs_naked-llama.png">
+  <img width="420" src="imgs/llama-in-framwork_vs_naked-llama.png">
 </p>
 
 ## install
@@ -32,7 +32,7 @@ python naked_llama.py
 ```
 
 
-<img src="llama2_7b_image.png" width="500">
+<img src="imgs/lama2_7b_image.png" width="500">
 
 ```bash
 # run 70 b
@@ -40,7 +40,7 @@ python naked_llama.py --model_size 70b
 
 ```
 
-<img src="llama2_70b_image.png" width="500">
+<img src="imgs/llama2_70b_image.png" width="500">
 
 ## references
 

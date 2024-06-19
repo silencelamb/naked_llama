@@ -1,7 +1,7 @@
 import os.path as osp
 import torch
 from .attention import multi_head_attention
-from .norm import RMSNorm
+from .rms_norm import RMSNorm
 from .matmul import LlamaMLP
 from utils import npy_to_tensor
 from configuration_llama import LlamaConfig

@@ -16,7 +16,7 @@ def init_rope_embeddings(dim, max_position_embeddings=4096, base=10000, device=N
     global cos_cached, sin_cached
     cos_cached = emb.cos().to(torch.get_default_dtype())
     sin_cached = emb.sin().to(torch.get_default_dtype())
-    return cos_cached,sin_cached
+    return cos_cached, sin_cached
 
 
 def get_rope_embeddings(x, seq_len=None):
@@ -66,7 +66,14 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
+
+# permute for sliced rotary
+def permute(w, n_heads, dim1, dim2):
+    return w.view(n_heads, dim1 // n_heads // 2, 2, dim2).transpose(1, 2).reshape(dim1, dim2)
+    
+
 ### meta implementation ###
+# source: https://github.com/meta-llama/llama/blob/main/llama/model.py#L80C1-L161C50
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     """
@@ -82,7 +89,7 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
         theta (float, optional): Scaling factor for frequency computation. Defaults to 10000.0.
 
     Returns:
-        torch.Tensor: Precomputed frequency tensor with complex exponentials.     
+        torch.Tensor: Precomputed frequency tensor with complex exponentials.
 
     """
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
@@ -138,8 +145,6 @@ def apply_rotary_emb(
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
 
-        
-
     """
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
@@ -148,11 +153,14 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
+
+
 if __name__ == '__main__':
+    torch.manual_seed(65536)
     torch.set_printoptions(linewidth=200)         # 这样打印不会存在折叠的问题
     # batch_size, seq_len, head_num, head_dim  = 1, 13, 32, 128
     batch_size, seq_len, head_num, head_dim  = 1, 6, 1, 8
-    max_position_embeddings = 4096
+    max_position_embeddings = 6
     
     # test hf implementation
     cos_cached,sin_cached = init_rope_embeddings(dim=head_dim, max_position_embeddings=max_position_embeddings)
@@ -160,27 +168,23 @@ if __name__ == '__main__':
     xq = torch.randn(batch_size, head_num, seq_len, head_dim)
     import copy
     xk = copy.deepcopy(xq)
-    # import pdb; pdb.set_trace()
     cos, sin = get_rope_embeddings(xq, seq_len=seq_len)
     position_ids = torch.arange(0, seq_len, dtype=torch.long).unsqueeze(0)
-    hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq, xk, cos, sin, position_ids)
-    # import pdb; pdb.set_trace()
-    
+    xq_permute = permute(xq, n_heads=head_num , dim1=head_dim, dim2=head_dim)
+    xk_permute = permute(xk, n_heads=head_num , dim1=head_dim, dim2=head_dim)
+    hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq_permute, xk_permute, cos, sin, position_ids)
     
     # test meta implementation
     xq_t = xq.transpose(1, 2)
     xk_t = xk.transpose(1, 2)
-    # import pdb; pdb.set_trace()
     freqs_cis = precompute_freqs_cis(dim=head_dim, end=max_position_embeddings)
     freqs_cis = freqs_cis[:seq_len]
     meta_xq_new, meta_xk_new = apply_rotary_emb(xq_t, xk_t, freqs_cis)
-    # import pdb; pdb.set_trace()
     meta_xq_new = meta_xq_new.transpose(1, 2)
     meta_xk_new = meta_xk_new.transpose(1, 2)
     
     error = torch.abs(meta_xq_new - hf_xq_new)
     print(f"Compare xq_new error sum: {torch.sum(error)}") 
-    import pdb; pdb.set_trace()
     error = torch.abs(meta_xk_new - hf_xk_new)
     print(f"Compare xk_new error sum: {torch.sum(error)}") 
 
