@@ -4,7 +4,7 @@ import argparse
 from transformers import AutoTokenizer, LlamaForCausalLM
 from utils import npy_to_tensor, load_llama_config, get_attentioin_mask
 from configuration_llama import LlamaConfig
-from layers.norm import RMSNorm
+from layers.rms_norm import RMSNorm
 from layers.rope import init_rope_embeddings
 from layers.embedding import embedding_lookup
 from layers.matmul import LlamaMLP, lm_head
