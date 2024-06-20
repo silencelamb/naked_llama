@@ -27,7 +27,7 @@ git clone https://github.com/silencelamb/naked_llama.git
 python convert_hf_to_pkl.py  # default model_size is 7b
 
 # default model_size is 7b
-python naked_llama.py
+python naked_llama_forward.py
 
 ```
 
