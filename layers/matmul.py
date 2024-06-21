@@ -34,7 +34,7 @@ def LlamaMLP(hidden_states, w_up, w_gate, w_down):
 def lm_head(x, weight, bias=None):
     return MLP(x, weight, bias)
 
-    
+
 class LlamaMLP_origin(nn.Module):
     # from transformers modeling_llama.py
     def __init__(self, hidden_size, intermediate_size, mlp_bias=None):
@@ -54,51 +54,95 @@ class LlamaMLP_origin(nn.Module):
         down_proj = self.down_proj(intermediate_states)
         return down_proj
 
+def matmul_backward(grad_output, x, weight, bias=None):
 
-def MLP_backward(grad_output, x, w_up, w_gate, w_down):
+    grad_x = None
+    grad_weight = None
+    grad_bias = None
+
+    o_z, i_z = weight.shape
+
+    if x.requires_grad:
+        grad_x = torch.matmul(grad_output, weight)
+    if weight.requires_grad:
+        # 张量转置时，需改变形状
+        grad_weight = torch.matmul(grad_output.view(-1, o_z).T, x.view(-1, i_z))
+
+    if bias is not None and bias.requires_grad:
+        grad_bias = grad_output.sum(dim=0)
+
+        return grad_x, grad_weight, grad_bias
+
+    return grad_x, grad_weight
+
+def LlamaMLP_backward(grad_output, x, w_up, w_gate, w_down):
     # 手写 MLP 的反向计算
     grad_x = None
     grad_w_up = None
     grad_w_gate = None
     grad_w_down = None
 
-    B, S, H = x.shape
+    # 前向传播
+    up_proj = FFN_up(x, w_up)
+    gate_proj = FFN_gate(x, w_gate)
+    gate_proj_act = nn.functional.silu(gate_proj)
+    up_proj_gate = up_proj * gate_proj_act
+    down_proj = FFN_down(up_proj_gate, w_down)
 
-    # 上投影、门控投影和下投影的前向计算
-    up_proj = torch.matmul(x, w_up.T)
-    gate_proj = torch.matmul(x, w_gate.T)
-    gate_proj_silu = torch.nn.functional.silu(gate_proj)
-    up_proj_gate = up_proj * gate_proj_silu
-    # down_proj = torch.matmul(up_proj_gate, w_down.T)
+    # 反向传播
+    # 下投影梯度
+    grad_up_proj_gate, grad_w_down = matmul_backward(grad_output, up_proj_gate, w_down)
     
-    # 计算门控投影的梯度
-    # 基于torch.sigmoid的实现
-    # grad_gate_proj = torch.matmul(grad_output, w_down) * up_proj * torch.sigmoid(gate_proj) * (1 + gate_proj * (1 - torch.sigmoid(gate_proj)))
-    # 基于./layers/activation.py 中的silu_backward的实现
-    grad_gate_proj = torch.matmul(grad_output, w_down) * up_proj * silu_backward(torch.ones_like(gate_proj), gate_proj)
-
-    # 计算上投影的梯度
-    # grad_up_proj = grad_output * gate_proj
-
-    # 计算下投影的梯度
-    grad_up_proj_gate = torch.matmul(grad_output, w_down) * gate_proj_silu
-
-    # 计算输入的梯度
-    if x.requires_grad:
-        grad_x = torch.matmul(grad_up_proj_gate, w_up) + torch.matmul(grad_gate_proj, w_gate)
-
-    # 计算权重的梯度
-    if w_up.requires_grad:
-        grad_w_up = torch.matmul(grad_up_proj_gate.view(B*S, -1).T, x.view(B*S, -1))
-    if w_gate.requires_grad:
-        grad_w_gate = torch.matmul(grad_gate_proj.view(B*S, -1).T, x.view(B*S, -1))
-    if w_down.requires_grad:
-        grad_w_down = torch.matmul(grad_output.view(B*S, -1).T, up_proj_gate.view(B*S, -1))
-
+    # 门控投影和上投影结果的梯度
+    grad_up_proj = grad_up_proj_gate * gate_proj_act
+    grad_gate_proj_act = grad_up_proj_gate * up_proj
+    
+    # silu激活函数反向传播
+    grad_gate_proj = silu_backward(grad_gate_proj_act, gate_proj)
+    
+    # 门控投影梯度
+    grad_hidden_states_gate, grad_w_gate = matmul_backward(grad_gate_proj, x, w_gate)
+    
+    # 上投影梯度
+    grad_hidden_states_up, grad_w_up = matmul_backward(grad_up_proj, x, w_up)
+    
+    # 总的输入梯度
+    grad_x = grad_hidden_states_gate + grad_hidden_states_up
+    
     return grad_x, grad_w_up, grad_w_gate, grad_w_down
 
+def test_matmul_backward_manual_func():
+    # MLP反向计算比较：手写的反向实现与pytorch自带的自动求导
+    batch_size = 4
+    seq_len = 12
+    hidden_size = 128
+    intermediate_size = 64
 
-def test_MLP_backward_auto_class_and_func():
+    # 假设输入是一个需要梯度的张量
+    input_tensor = torch.randn(batch_size, seq_len, hidden_size)
+    # 定义权重
+    weight = nn.Parameter(torch.ones(intermediate_size, hidden_size ))
+    
+    input_tensor.requires_grad_(True)
+
+    # 前向传递
+    output_class = MLP(input_tensor, weight)
+
+    # 定义输出的grad
+    dy = .1 * torch.randn_like(output_class)
+    
+    output_class.backward(dy, retain_graph=True)
+    dx_class, dw_class = [_.grad.clone() for _ in [input_tensor, weight]]
+
+    weight = weight.clone().detach().requires_grad_(True)
+    input_tensor = input_tensor.clone().detach().requires_grad_(True)
+    
+    dx_manual, dw_manual = matmul_backward(dy, input_tensor, weight)
+
+    print(torch.testing.assert_close(dx_class, dx_manual))
+    print(torch.testing.assert_close(dw_class, dw_manual))
+
+def test_LlamaMLP_backward_auto_class_and_func():
     # 使用pytorch自带的自动求导
     # MLP的实现：一种使用nn.module的类，一种使用函数
     batch_size = 4
@@ -120,9 +164,9 @@ def test_MLP_backward_auto_class_and_func():
     output_class = llama_mlp(input_tensor)
     
     output_class.backward(dy, retain_graph=True)
-    dx_class, dg_class, du_class, dd_class = [_.grad.clone() for _ in [input_tensor, 
-                                                   llama_mlp.gate_proj.weight,
-                                                   llama_mlp.up_proj.weight, 
+    dx_class, du_class, dg_class, dd_class = [_.grad.clone() for _ in [input_tensor, 
+                                                   llama_mlp.up_proj.weight,
+                                                   llama_mlp.gate_proj.weight, 
                                                    llama_mlp.down_proj.weight]]
 
     weight_g = llama_mlp.gate_proj.weight.clone().detach().requires_grad_(True)
@@ -143,7 +187,7 @@ def test_MLP_backward_auto_class_and_func():
     print(torch.testing.assert_close(dd_class, dd_func))
 
 
-def test_MLP_backward_manual_func():
+def test_LlamaMLP_backward_manual_func():
     # MLP反向计算比较：手写的反向实现与pytorch自带的自动求导
     batch_size = 4
     seq_len = 12
@@ -163,9 +207,9 @@ def test_MLP_backward_manual_func():
     output_class = llama_mlp(input_tensor)
     
     output_class.backward(dy, retain_graph=True)
-    dx_class, dg_class, du_class, dd_class = [_.grad.clone() for _ in [input_tensor, 
-                                                   llama_mlp.gate_proj.weight,
-                                                   llama_mlp.up_proj.weight, 
+    dx_class, du_class, dg_class, dd_class = [_.grad.clone() for _ in [input_tensor, 
+                                                   llama_mlp.up_proj.weight,
+                                                   llama_mlp.gate_proj.weight, 
                                                    llama_mlp.down_proj.weight]]
 
     weight_g = llama_mlp.gate_proj.weight.clone().detach().requires_grad_(True)
@@ -173,7 +217,7 @@ def test_MLP_backward_manual_func():
     weight_d = llama_mlp.down_proj.weight.clone().detach().requires_grad_(True)
     input_tensor = input_tensor.clone().detach().requires_grad_(True)
     
-    dx_manual, du_manual, dg_manual, dd_manual = MLP_backward(dy, input_tensor, weight_u, weight_g, weight_d)
+    dx_manual, du_manual, dg_manual, dd_manual = LlamaMLP_backward(dy, input_tensor, weight_u, weight_g, weight_d)
 
     print(torch.testing.assert_close(dx_class, dx_manual))
     print(torch.testing.assert_close(du_class, du_manual))
@@ -182,8 +226,9 @@ def test_MLP_backward_manual_func():
 
 
 if __name__ == "__main__":
-    test_MLP_backward_auto_class_and_func()
-    test_MLP_backward_manual_func()
+    test_LlamaMLP_backward_auto_class_and_func()
+    test_LlamaMLP_backward_manual_func()
+    test_matmul_backward_manual_func()
 
 
 
