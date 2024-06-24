@@ -165,15 +165,17 @@ def apply_rotary_pos_emb_backward(grad_output_q, grad_output_k, q, k, cos, sin, 
     cos = cos[position_ids].unsqueeze(unsqueeze_dim)
     sin = sin[position_ids].unsqueeze(unsqueeze_dim)
 
-    # q 的反向计算
-    grad_q_cos = grad_output_q * cos
-    grad_q_rot = rotate_half_backward(grad_output_q, q) * sin
-    grad_q = grad_q_cos + grad_q_rot
+    if q.requires_grad:
+        # q 的反向计算
+        grad_q_cos = grad_output_q * cos
+        grad_q_rot = rotate_half_backward(grad_output_q, q) * sin
+        grad_q = grad_q_cos + grad_q_rot
 
-    # k 的反向计算
-    grad_k_cos = grad_output_k * cos
-    grad_k_rot = rotate_half_backward(grad_output_k, k) * sin
-    grad_k = grad_k_cos + grad_k_rot
+    if k.requires_grad:
+        # k 的反向计算
+        grad_k_cos = grad_output_k * cos
+        grad_k_rot = rotate_half_backward(grad_output_k, k) * sin
+        grad_k = grad_k_cos + grad_k_rot
 
     return grad_q, grad_k
 
