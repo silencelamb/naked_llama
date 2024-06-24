@@ -70,7 +70,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
 # permute for sliced rotary
 def permute(w, n_heads, dim1, dim2):
     return w.view(n_heads, dim1 // n_heads // 2, 2, dim2).transpose(1, 2).reshape(dim1, dim2)
-    
+
 
 ### meta implementation ###
 # source: https://github.com/meta-llama/llama/blob/main/llama/model.py#L80C1-L161C50
@@ -153,7 +153,67 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
+### huggingface implementation's backward ###
+def rotate_half_backward(grad_output, x):
+    # 反向计算 rotate_half 的梯度
+    grad_x1 = grad_output[..., x.shape[-1] // 2:]
+    grad_x2 = -grad_output[..., :x.shape[-1] // 2]
+    return torch.cat([grad_x1, grad_x2], dim=-1)
 
+def apply_rotary_pos_emb_backward(grad_output_q, grad_output_k, q, k, cos, sin, position_ids, unsqueeze_dim=1):
+    # broadcast cos and sin to the dimensions of q and k
+    cos = cos[position_ids].unsqueeze(unsqueeze_dim)
+    sin = sin[position_ids].unsqueeze(unsqueeze_dim)
+
+    # q 的反向计算
+    grad_q_cos = grad_output_q * cos
+    grad_q_rot = rotate_half_backward(grad_output_q, q) * sin
+    grad_q = grad_q_cos + grad_q_rot
+
+    # k 的反向计算
+    grad_k_cos = grad_output_k * cos
+    grad_k_rot = rotate_half_backward(grad_output_k, k) * sin
+    grad_k = grad_k_cos + grad_k_rot
+
+    return grad_q, grad_k
+
+def test_apply_rotary_pos_emb_backward_manual_func():
+    # ROPE反向计算比较：手写的反向实现与pytorch自带的自动求导
+    batch_size = 1
+    seq_len = 6
+    head_num = 1
+    head_dim = 8
+    max_position_embeddings = 6
+    cos_cached, sin_cached = init_rope_embeddings(dim=head_dim, max_position_embeddings=max_position_embeddings)
+
+    # 假设输入是一个需要梯度的张量
+    input_xq = torch.randn(batch_size, head_num, seq_len, head_dim)
+    input_xk = copy.deepcopy(input_xq)
+     
+    input_xq.requires_grad_(True)
+    input_xk.requires_grad_(True)
+
+    cos, sin = get_rope_embeddings(input_xq, seq_len=seq_len)
+    
+    position_ids = torch.arange(0, seq_len, dtype=torch.long).unsqueeze(0)
+    output_xq, output_xk = apply_rotary_pos_emb(input_xq, input_xk, cos, sin, position_ids)
+
+    # 定义输出的grad
+    d_xq = .1 * torch.randn_like(output_xq)
+    d_xk = .1 * torch.randn_like(output_xk)
+    
+    output_xq.backward(d_xq, retain_graph=True)
+    output_xk.backward(d_xk, retain_graph=True)
+
+    d_xq_class, d_xk_class = [_.grad.clone() for _ in [input_xq, input_xk]]
+
+    input_xq = input_xq.clone().detach().requires_grad_(True)
+    input_xk = input_xk.clone().detach().requires_grad_(True)
+    
+    d_xq_manual, d_xk_manual = apply_rotary_pos_emb_backward(d_xq, d_xk, input_xq, input_xk, cos, sin, position_ids, unsqueeze_dim=1)
+
+    print(torch.testing.assert_close(d_xq_class, d_xq_manual))
+    print(torch.testing.assert_close(d_xk_class, d_xk_manual))
 
 if __name__ == '__main__':
     torch.manual_seed(65536)
@@ -170,10 +230,12 @@ if __name__ == '__main__':
     xk = copy.deepcopy(xq)
     cos, sin = get_rope_embeddings(xq, seq_len=seq_len)
     position_ids = torch.arange(0, seq_len, dtype=torch.long).unsqueeze(0)
-    xq_permute = permute(xq, n_heads=head_num , dim1=head_dim, dim2=head_dim)
-    xk_permute = permute(xk, n_heads=head_num , dim1=head_dim, dim2=head_dim)
-    hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq_permute, xk_permute, cos, sin, position_ids)
+    # xq_permute = permute(xq, n_heads=head_num , dim1=head_dim, dim2=seq_len)
+    # xk_permute = permute(xk, n_heads=head_num , dim1=head_dim, dim2=seq_len)
+    # hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq_permute, xk_permute, cos, sin, position_ids)
+    hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq, xk, cos, sin, position_ids)
     
+
     # test meta implementation
     xq_t = xq.transpose(1, 2)
     xk_t = xk.transpose(1, 2)
@@ -187,5 +249,7 @@ if __name__ == '__main__':
     print(f"Compare xq_new error sum: {torch.sum(error)}") 
     error = torch.abs(meta_xk_new - hf_xk_new)
     print(f"Compare xk_new error sum: {torch.sum(error)}") 
+
+    test_apply_rotary_pos_emb_backward_manual_func()
 
     
