@@ -1,5 +1,6 @@
 import torch
 from typing import Optional, Tuple
+import copy
 
 cos_cached = None
 sin_cached = None
@@ -69,8 +70,23 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
 
 # permute for sliced rotary
 def permute(w, n_heads, dim1, dim2):
+    # from huggingface transformers
+    # https://github.com/huggingface/transformers/blob/6c1295a0d8795d122670d44614d5eb4e37000fa5/src/transformers/models/llama/convert_llama_weights_to_hf.py#L134
     return w.view(n_heads, dim1 // n_heads // 2, 2, dim2).transpose(1, 2).reshape(dim1, dim2)
 
+def test_permute():
+    n_heads, dim1, dim2 = 2, 2*3*2, 4
+    w = torch.randn(dim1, dim2)
+    print(w)
+    permute_w = permute(w, n_heads, dim1, dim2)
+    print('after permute =>>>>>>>>>>>>')
+    print(permute_w)
+
+def permute_qk(qk, n_heads):
+    # batch_size, seq_len, head_num*head_dim
+    batch_size, seq_len, hidden_size = qk.shape
+    head_dim = hidden_size // n_heads
+    return qk.view(batch_size, seq_len, n_heads, head_dim // 2, 2).transpose(3, 4).reshape(batch_size, seq_len, head_dim)
 
 ### meta implementation ###
 # source: https://github.com/meta-llama/llama/blob/main/llama/model.py#L80C1-L161C50
@@ -153,6 +169,47 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
+
+def test_rope_hf_and_meta():
+    # batch_size, seq_len, head_num, head_dim  = 1, 13, 32, 128
+    batch_size, seq_len, head_num, head_dim,   = 1, 6, 1, 8
+    max_position_embeddings = seq_len
+    
+    xq = torch.randn(batch_size, seq_len, head_num*head_dim)
+    meta_xq = xq.view(batch_size, seq_len, head_num, head_dim)
+    meta_xk = copy.deepcopy(meta_xq)
+
+    # test meta implementation
+    freqs_cis = precompute_freqs_cis(dim=head_dim, end=max_position_embeddings)
+    freqs_cis = freqs_cis[:seq_len]
+    meta_xq_new, meta_xk_new = apply_rotary_emb(meta_xq, meta_xk, freqs_cis)
+ 
+    # meta implementation's permute, to compare with huggingface implementation
+    meta_xq_new_permute = permute_qk(meta_xq_new.view(batch_size, seq_len, -1), head_num)
+    meta_xq_new_permute = meta_xq_new_permute.view(batch_size, seq_len, head_num, head_dim)
+    meta_xk_new_permute = permute_qk(meta_xk_new.view(batch_size, seq_len, -1), head_num)
+    meta_xk_new_permute = meta_xk_new_permute.view(batch_size, seq_len, head_num, head_dim)
+    
+    # test hf implementation
+    # qk result permute, result from weights permute
+    xq_permuted = permute_qk(xq, head_num)
+    hf_xq = xq_permuted.view(batch_size, seq_len, head_num, head_dim).transpose(1, 2)
+    hf_xk = copy.deepcopy(hf_xq)
+    cos_cached,sin_cached = init_rope_embeddings(dim=head_dim, max_position_embeddings=max_position_embeddings)
+    
+    cos, sin = get_rope_embeddings(xq, seq_len=seq_len)
+    position_ids = torch.arange(0, seq_len, dtype=torch.long).unsqueeze(0)
+    hf_xq_new, hf_xk_new = apply_rotary_pos_emb(hf_xq, hf_xk, cos, sin, position_ids)
+    hf_xq_new = hf_xq_new.transpose(1, 2)
+    hf_xk_new = hf_xk_new.transpose(1, 2)
+
+
+    error = torch.abs(meta_xq_new_permute - hf_xq_new)
+    print(f"Compare rope meta version and hf version, xq_new error sum: {torch.sum(error)}") 
+    error = torch.abs(meta_xk_new_permute - hf_xk_new)
+    print(f"Compare rope meta version and hf version, xk_new error sum: {torch.sum(error)}") 
+
+
 ### huggingface implementation's backward ###
 def rotate_half_backward(grad_output, x):
     # 反向计算 rotate_half 的梯度
@@ -181,17 +238,15 @@ def apply_rotary_pos_emb_backward(grad_output_q, grad_output_k, q, k, cos, sin, 
 
 def test_apply_rotary_pos_emb_backward_manual_func():
     # ROPE反向计算比较：手写的反向实现与pytorch自带的自动求导
-    batch_size = 1
-    seq_len = 6
-    head_num = 1
-    head_dim = 8
+    batch_size, seq_len, head_num, head_dim  = 1, 13, 32, 128
+    batch_size, seq_len, head_num, head_dim  = 1, 6, 1, 8
     max_position_embeddings = 6
     cos_cached, sin_cached = init_rope_embeddings(dim=head_dim, max_position_embeddings=max_position_embeddings)
 
     # 假设输入是一个需要梯度的张量
     input_xq = torch.randn(batch_size, head_num, seq_len, head_dim)
     input_xk = copy.deepcopy(input_xq)
-     
+
     input_xq.requires_grad_(True)
     input_xk.requires_grad_(True)
 
@@ -220,38 +275,9 @@ def test_apply_rotary_pos_emb_backward_manual_func():
 if __name__ == '__main__':
     torch.manual_seed(65536)
     torch.set_printoptions(linewidth=200)         # 这样打印不会存在折叠的问题
-    # batch_size, seq_len, head_num, head_dim  = 1, 13, 32, 128
-    batch_size, seq_len, head_num, head_dim  = 1, 6, 1, 8
-    max_position_embeddings = 6
-    
-    # test hf implementation
-    cos_cached,sin_cached = init_rope_embeddings(dim=head_dim, max_position_embeddings=max_position_embeddings)
-    
-    xq = torch.randn(batch_size, head_num, seq_len, head_dim)
-    import copy
-    xk = copy.deepcopy(xq)
-    cos, sin = get_rope_embeddings(xq, seq_len=seq_len)
-    position_ids = torch.arange(0, seq_len, dtype=torch.long).unsqueeze(0)
-    # xq_permute = permute(xq, n_heads=head_num , dim1=head_dim, dim2=seq_len)
-    # xk_permute = permute(xk, n_heads=head_num , dim1=head_dim, dim2=seq_len)
-    # hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq_permute, xk_permute, cos, sin, position_ids)
-    hf_xq_new, hf_xk_new = apply_rotary_pos_emb(xq, xk, cos, sin, position_ids)
-    
 
-    # test meta implementation
-    xq_t = xq.transpose(1, 2)
-    xk_t = xk.transpose(1, 2)
-    freqs_cis = precompute_freqs_cis(dim=head_dim, end=max_position_embeddings)
-    freqs_cis = freqs_cis[:seq_len]
-    meta_xq_new, meta_xk_new = apply_rotary_emb(xq_t, xk_t, freqs_cis)
-    meta_xq_new = meta_xq_new.transpose(1, 2)
-    meta_xk_new = meta_xk_new.transpose(1, 2)
-    
-    error = torch.abs(meta_xq_new - hf_xq_new)
-    print(f"Compare xq_new error sum: {torch.sum(error)}") 
-    error = torch.abs(meta_xk_new - hf_xk_new)
-    print(f"Compare xk_new error sum: {torch.sum(error)}") 
-
+    # test_permute()  # print permute result and before permute result
+    test_rope_hf_and_meta()
     test_apply_rotary_pos_emb_backward_manual_func()
 
     
