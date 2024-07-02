@@ -5,29 +5,33 @@ import torch.testing
 class LayerNorm:
     # from https://github.com/karpathy/llm.c/blob/master/doc/layernorm/layernorm.py
     # you can also refer https://triton-lang.org/main/getting-started/tutorials/05-layer-norm.html
-    @staticmethod
-    def forward(x, w, b, eps=1e-5):
+    def __init__(self, weight, bias, eps=1e-5):
+        self.eps = eps
+        self.weight = weight
+        self.bias = bias
+        self.cache = None
+        
+    def forward(self, x):
         B, T, C = x.size()
         mean = x.sum(-1, keepdim=True) / C # B,T,1
         xshift = x - mean # B,T,C
         var = (xshift**2).sum(-1, keepdim=True) / C # B,T,1
-        rstd = (var + eps) ** -0.5 # B,T,1
+        rstd = (var + self.eps) ** -0.5 # B,T,1
         norm = xshift * rstd # B,T,C
-        out = norm * w + b # B,T,C
+        out = norm * self.weight + self.bias # B,T,C
 
-        cache = (x, w, mean, rstd)
-        return out, cache
+        self.cache = (x, mean, rstd)
+        return out
 
-    @staticmethod
-    def backward(dout, cache):
-        x, w, mean, rstd = cache
+    def backward(self, dout):
+        x, mean, rstd = self.cache
         # recompute the norm (save memory at the cost of compute)
         norm = (x - mean) * rstd
         # gradients for weights, bias
         db = dout.sum((0, 1))
         dw = (dout * norm).sum((0, 1))
         # gradients for input
-        dnorm = dout * w
+        dnorm = dout * self.weight
         dx = dnorm - dnorm.mean(-1, keepdim=True) - norm * (dnorm * norm).mean(-1, keepdim=True)
         dx *= rstd
         return dx, dw, db
@@ -42,10 +46,11 @@ def test_LayerNorm_backward_manual_func():
     x = torch.randn(B, T, C, requires_grad=True)
     w = torch.randn(C, requires_grad=True)
     b = torch.randn(C, requires_grad=True)
-    out, cache = LayerNorm.forward(x, w, b)
+    layernorm = LayerNorm(w, b)
+    out = layernorm.forward(x)
 
     dout = torch.randn(B, T, C)
-    dx, dw, db = LayerNorm.backward(dout, cache)
+    dx, dw, db = layernorm.backward(dout)
 
     # compare to PyTorch autograd
     fakeloss = (out * dout).sum()
