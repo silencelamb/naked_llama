@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.testing
-from activation import silu_backward
+from layers.activation import silu_backward
 
 def MLP(x, weight, bias=None):
     # 全连接层/矩阵乘
