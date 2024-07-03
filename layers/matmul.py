@@ -181,6 +181,10 @@ def test_LlamaMLP_backward_manual_class():
     print(torch.testing.assert_close(du_class, du_manual))
     print(torch.testing.assert_close(dg_class, dg_manual))
     print(torch.testing.assert_close(dd_class, dd_manual))
+    print(torch.testing.assert_close(dbias_u_class, dbias_u_manual))
+    print(torch.testing.assert_close(dbias_g_class, dbias_g_manual))
+    print(torch.testing.assert_close(dbias_d_class, dbias_d_manual))
+
 
 
 if __name__ == "__main__":
