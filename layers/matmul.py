@@ -38,7 +38,7 @@ class MLP:
         return grad_x, grad_weight, grad_bias
 
 class LlamaMLP:
-    def __init__(self, w_up, w_gate, w_down, bias_up, bias_gate, bias_down):
+    def __init__(self, w_up, w_gate, w_down, bias_up=None, bias_gate=None, bias_down=None):
         self.FFN_up = MLP(w_up, bias_up)
         self.FFN_gate = MLP(w_gate, bias_gate)
         self.FFN_down = MLP(w_down, bias_down)
@@ -50,7 +50,7 @@ class LlamaMLP:
         gate_proj_act = nn.functional.silu(gate_proj)
         up_proj_gate = up_proj * gate_proj_act
         down_proj = self.FFN_down.forward(up_proj_gate)
-        self.cache = (up_proj, gate_proj, gate_proj_act, up_proj_gate, down_proj)
+        self.cache = (up_proj, gate_proj, gate_proj_act)
         return down_proj
 
     def backward(self, grad_output):
@@ -59,7 +59,7 @@ class LlamaMLP:
         grad_w_up, grad_bias_up = None, None
         grad_w_gate, grad_bias_gate = None, None
         grad_w_down, grad_bias_down = None, None
-        up_proj, gate_proj, gate_proj_act, up_proj_gate, down_proj = self.cache
+        up_proj, gate_proj, gate_proj_act = self.cache
 
         # 下投影梯度
         grad_up_proj_gate, grad_w_down, grad_bias_down = self.FFN_down.backward(grad_output)
