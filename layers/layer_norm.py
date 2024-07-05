@@ -37,7 +37,7 @@ class LayerNorm:
         return dx, dw, db
 
 
-def test_LayerNorm_backward_manual_func():
+def test_LayerNorm_backward_manual_class():
     # from https://github.com/karpathy/llm.c/blob/master/doc/layernorm/layernorm.py
     # 测试手写的LayerNorm反向实现，与torch的自动求导比对
     B = 2
@@ -61,4 +61,4 @@ def test_LayerNorm_backward_manual_func():
 
     
 if __name__ == "__main__":
-    test_LayerNorm_backward_manual_func()
+    test_LayerNorm_backward_manual_class()

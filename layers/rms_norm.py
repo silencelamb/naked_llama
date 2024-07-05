@@ -44,11 +44,10 @@ class LlamaRMSNormManual:
         hidden_states = hidden_states * inv_rms
         return self.weight * hidden_states.to(input_dtype)
     
-    def backward(self, grad_output, input_tensor):
+    def backward(self, grad_output):
         # 手写 rmsnorm的反向计算
         # reference: https://github.com/unslothai/unsloth/blob/main/unsloth/kernels/rms_layernorm.py
         x, inv_rms = self.cache
-        x = input_tensor
         D = x.size(-1)
         grad_x = None
         grad_weight = None
@@ -222,7 +221,7 @@ def test_RMSNorm_backward_manual_class():
     
     llama_rmsnorm_manual = LlamaRMSNormManual(weight, eps=eps)
     output_manual = llama_rmsnorm_manual.forward(input_tensor)
-    dx_manual, dw_manual = llama_rmsnorm_manual.backward(dy, input_tensor)
+    dx_manual, dw_manual = llama_rmsnorm_manual.backward(dy)
 
     print(torch.testing.assert_close(dw_class, dw_manual))
     print(torch.testing.assert_close(dx_class, dx_manual))

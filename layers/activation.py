@@ -10,7 +10,23 @@ def silu_backward(dy, x):
     return (dy.float() * sigm * (1 + x.float() * (1 - sigm))).to(x.dtype)
 
 
+class Softmax:
+    def __init__(self, dim=-1):
+        self.dim = dim
+        self.cacha = None
     
+    def forward(self, x, dtype=torch.float32):
+        # softmax_rst = torch.exp(x) / torch.exp(x).sum(dim=-1, keepdim=True) 
+        # 使用稳定实现的softmax
+        softmax_rst = nn.functional.softmax(x, dim=self.dim, dtype=dtype)
+        self.cache = (x, softmax_rst)
+        return softmax_rst
+
+    def backward(self, grad_output):
+        x, softmax_rst = self.cache
+        grad_x = softmax_rst * (grad_output - torch.sum(grad_output * softmax_rst, dim=-1, keepdim=True))
+        return grad_x
+
 def test_silu_backward_manual_func():
     # silu反向计算比较：手写的反向实现与pytorch自带的自动求导
     eps = 1e-5
