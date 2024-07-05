@@ -2,7 +2,7 @@ import os.path as osp
 import torch
 from torch import nn
 from layers.attention import LlamaAttention
-from layers.rms_norm import LlamaRMSNormManual
+from layers.rms_norm import LlamaRMSNorm
 from layers.matmul import LlamaMLP
 from layers.rope import init_rope_embeddings
 from utils import npy_to_tensor, load_llama_config, get_attentioin_mask
@@ -13,9 +13,9 @@ class LlamaTransformerBlock():
                  w_up, w_gate, w_down, post_att_norm_weight,
                  bias_q=None, bias_k=None, bias_v=None, bias_o=None,
                  bias_up=None, bias_gate=None, bias_down=None):
-        self.input_rmsnrom = LlamaRMSNormManual(input_norm_weight, eps=config.rms_norm_eps)
+        self.input_rmsnrom = LlamaRMSNorm(input_norm_weight, eps=config.rms_norm_eps)
         self.llama_attention = LlamaAttention(config, w_q, w_k, w_v, w_o, bias_q, bias_k, bias_v, bias_o)
-        self.post_att_rmsnorm = LlamaRMSNormManual(post_att_norm_weight, eps=config.rms_norm_eps)
+        self.post_att_rmsnorm = LlamaRMSNorm(post_att_norm_weight, eps=config.rms_norm_eps)
         self.llama_mlp = LlamaMLP(w_up, w_gate, w_down, bias_up, bias_gate, bias_down)
         self.cache = None
     
@@ -73,23 +73,6 @@ class LlamaTransformerBlock():
 
         return grads
 
-    # w_q = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.q_proj.weight.npy'))
-    # w_k = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.k_proj.weight.npy'))
-    # w_v = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.v_proj.weight.npy'))
-    # w_o = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.o_proj.weight.npy'))
-    # input_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.input_layernorm.weight.npy'))
-    # post_att_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.post_attention_layernorm.weight.npy'))
-    # w_up = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.up_proj.weight.npy'))
-    # w_gate = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.gate_proj.weight.npy'))
-    # w_down = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.down_proj.weight.npy'))
-    # w_q.requires_grad_(True)
-    # w_k.requires_grad_(True)
-    # w_v.requires_grad_(True)
-    # w_o.requires_grad_(True)
-    # w_up.requires_grad_(True)
-    # w_gate.requires_grad_(True)
-    # w_down.requires_grad_(True)
-
 def test_transformer_block_backward_manual_class():
 
     model_dict = {
@@ -112,12 +95,12 @@ def test_transformer_block_backward_manual_class():
     layer_id = 1    
     x = torch.randn(batch_size, seq_len, hidden_size).requires_grad_(True)
     
-    # input_norm_weight = torch.ones(hidden_size).requires_grad_(True)
+    input_norm_weight = torch.randn(hidden_size).requires_grad_(True)
     # w_q = torch.randn(num_heads*head_dim, num_heads*head_dim).requires_grad_(True)
     # w_k = torch.randn(num_kv_heads*head_dim, num_heads*head_dim).requires_grad_(True)
     # w_v = torch.randn(num_kv_heads*head_dim, num_heads*head_dim).requires_grad_(True)
     # w_o = torch.randn(num_heads*head_dim, num_heads*head_dim).requires_grad_(True)
-    # post_att_norm_weight = torch.ones(hidden_size).requires_grad_(True)
+    post_att_norm_weight = torch.randn(hidden_size).requires_grad_(True)
     # w_up = torch.randn(intermediate_size, hidden_size).requires_grad_(True)
     # w_gate = torch.randn(intermediate_size, hidden_size).requires_grad_(True)
     # w_down = torch.randn(hidden_size, intermediate_size).requires_grad_(True)
@@ -126,8 +109,8 @@ def test_transformer_block_backward_manual_class():
     w_k = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.k_proj.weight.npy'))
     w_v = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.v_proj.weight.npy'))
     w_o = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.self_attn.o_proj.weight.npy'))
-    input_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.input_layernorm.weight.npy'))
-    post_att_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.post_attention_layernorm.weight.npy'))
+    # input_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.input_layernorm.weight.npy'))
+    # post_att_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.post_attention_layernorm.weight.npy'))
     w_up = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.up_proj.weight.npy'))
     w_gate = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.gate_proj.weight.npy'))
     w_down = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{layer_id}.mlp.down_proj.weight.npy'))

@@ -2,45 +2,10 @@ import os.path as osp
 import torch
 import argparse
 from transformers import AutoTokenizer, LlamaForCausalLM
+from layers.rope import init_rope_embeddings
 from utils import npy_to_tensor, load_llama_config, get_attentioin_mask
 from configuration_llama import LlamaConfig
-from layers.rms_norm import RMSNorm
-from layers.rope import init_rope_embeddings
-from layers.embedding import embedding_lookup
-from layers.matmul import LlamaMLP, lm_head
-from layers.transformer_block import llama2_transformer_block
-
-
-def llama2(token_ids: torch.Tensor, config: LlamaConfig):
-    """
-    手动实现llama2 7B/13B/70B的推理计算。
-    
-    参数:
-    - token_ids: token id组成的tensor，形状为 [batch_size, seq_length]
-    """
-    bsz, seq_length = token_ids.shape
-    # embedding 
-    embdding_weights = npy_to_tensor(osp.join(config.weights_dir, 'model.embed_tokens.weight.npy'))
-    input_embeds = embedding_lookup(token_ids, embdding_weights)
-    hidden_states = input_embeds  # shape [batch_size, seq_length, hidden_size], hidden_size=4096
-    
-    # mask
-    mask = get_attentioin_mask(start_pos=0, seq_length=seq_length, ref_tensor=hidden_states)
-
-    # 重复 32次(7B)/ 80次(70B) llama2_transformer_block 的计算
-    for layer_id in range(config.num_hidden_layers):
-        print(f'Naked llama: Computing {config.model_name} Layer {layer_id}')
-        output = llama2_transformer_block(hidden_states, config, layer_id=layer_id, attention_mask=mask)
-        hidden_states = output[0]
-    
-    # 先 RMSNorm，然后head输出
-    norm_weight = npy_to_tensor(osp.join(config.weights_dir, 'model.norm.weight.npy'))
-    hidden_states = RMSNorm(hidden_states, norm_weight, eps=config.rms_norm_eps)
-    
-    lm_head_weight = npy_to_tensor(osp.join(config.weights_dir, 'lm_head.weight.npy'))
-    logits = lm_head(hidden_states, lm_head_weight)
-    return logits
-
+from llama import LlamaModel
 
 if __name__ == '__main__':
     torch.set_printoptions(linewidth=200)   # 这样打印 mask 不会存在折叠的问题
@@ -86,7 +51,8 @@ if __name__ == '__main__':
 
     config = load_llama_config(model_dict[model_name]['config_path'])
     config.weights_dir = model_dict[model_name]['weights_dir']
-    logits = llama2(token_ids, config)
+    llama2 = LlamaModel(config)
+    logits = llama2.forward(token_ids)
     
     print(f'Naked llama, model: {config.model_name}, result:')
     print(logits)
