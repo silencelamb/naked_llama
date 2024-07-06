@@ -1,4 +1,4 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
 device = "cuda" # the device to load the model onto
 
 model = AutoModelForCausalLM.from_pretrained(
@@ -6,7 +6,6 @@ model = AutoModelForCausalLM.from_pretrained(
     torch_dtype="auto",
     device_map="auto"
 )
-import pdb; pdb.set_trace()
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2-7B-Instruct")
 
 prompt = "Give me a short introduction to large language model."
@@ -23,7 +22,7 @@ model_inputs = tokenizer([text], return_tensors="pt").to(device)
 
 generated_ids = model.generate(
     model_inputs.input_ids,
-    max_new_tokens=512
+    max_new_tokens=32
 )
 generated_ids = [
     output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
@@ -31,4 +30,21 @@ generated_ids = [
 
 response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
+print(response)
+
+
+model = LlamaForCausalLM.from_pretrained(
+    "Qwen/Qwen2-7B-Instruct",
+    torch_dtype="auto",
+    device_map="auto"
+)
+generated_ids = model.generate(
+    model_inputs.input_ids,
+    max_new_tokens=32
+)
+generated_ids = [
+    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+]
+
+response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 print(response)
