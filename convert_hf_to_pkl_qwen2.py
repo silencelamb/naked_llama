@@ -8,10 +8,15 @@ model = 'qwen2_7b'
 
 # Load the model
 model_configs = {
-    'qwen2_7b': {
+    'qwen2_7b_instruct': {
         'hf_model': "Qwen/Qwen2-7B-Instruct",
         'tokenizer': "Qwen/Qwen2-7B-Instruct",
         'weights_dir': 'weights/qwen2_7b_instruct/'
+    },
+    'qwen2_7b': {
+        'hf_model': "Qwen/Qwen2-7B",
+        'tokenizer': "Qwen/Qwen2-7B",
+        'weights_dir': 'weights/qwen2_7b/'
     },
 }
 
