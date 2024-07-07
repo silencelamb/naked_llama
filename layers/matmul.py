@@ -37,12 +37,42 @@ class MLP:
 
         return grad_x, grad_weight, grad_bias
 
+
+class LoraMLP:
+    # Lora的全连接层/矩阵乘
+    def __init__(self, base_weight, lora_a, lora_b, scaling, dropout, base_bias=None):
+        self.base_linear = MLP(base_weight, base_bias)
+        self.lora_a = lora_a
+        self.lora_b = lora_b
+        self.scaling = scaling
+        self.dropout = nn.Dropout(p=dropout)
+        self.cache = None
+    
+    def forward(self, x):
+        result = self.base_linear.forward(x)
+        dropout_x = self.dropout(x)
+        lora_branch = torch.matmul( torch.matmul(dropout_x, self.lora_a.T), self.lora_b.T )
+        lora_branch = self.scaling * lora_branch
+        result += lora_branch
+        self.cache = x
+        return result
+
+    def backward(self, grad_output):
+        pass
+
+        return grad_x, grad_weight, grad_bias
+
 class LlamaMLP:
     def __init__(self, w_up, w_gate, w_down, bias_up=None, bias_gate=None, bias_down=None):
         self.FFN_up = MLP(w_up, bias_up)
         self.FFN_gate = MLP(w_gate, bias_gate)
         self.FFN_down = MLP(w_down, bias_down)
         self.cache = None
+    
+    def replace_with_lora(self, up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout):
+        self.FFN_up = LoraMLP(self.FFN_up.weight, up_lora_a, up_lora_b, scaling, dropout, self.FFN_up.bias)
+        self.FFN_gate = LoraMLP(self.FFN_gate.weight, gate_lora_a, gate_lora_b, scaling, dropout, self.FFN_gate.bias)
+        self.FFN_down = LoraMLP(self.FFN_down.weight, down_lora_a, down_lora_b, scaling, dropout, self.FFN_down.bias)
     
     def forward(self, hidden_states):
         up_proj = self.FFN_up.forward(hidden_states)
@@ -82,6 +112,18 @@ class LlamaMLP:
         
         return grad_x, grad_w_up, grad_w_gate, grad_w_down, grad_bias_up, grad_bias_gate, grad_bias_down
 
+class LoraLlamaMLP(LlamaMLP):
+    
+    def replace_with_lora(self, up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout):
+        self.FFN_up.weight.requires_grad_(False)
+        self.FFN_gate.weight.requires_grad_(False)
+        self.FFN_down.weight.requires_grad_(False)
+        self.FFN_up = LoraMLP(self.FFN_up.weight, up_lora_a, up_lora_b, scaling, dropout, self.FFN_up.bias)
+        self.FFN_gate = LoraMLP(self.FFN_gate.weight, gate_lora_a, gate_lora_b, scaling, dropout, self.FFN_gate.bias)
+        self.FFN_down = LoraMLP(self.FFN_down.weight, down_lora_a, down_lora_b, scaling, dropout, self.FFN_down.bias)
+    
+    def backward(self, grad_output):
+        pass
 class LlamaMLPOrigin(nn.Module):
     # from transformers modeling_llama.py
     def __init__(self, hidden_size, intermediate_size, mlp_bias=None):

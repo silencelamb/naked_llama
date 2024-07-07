@@ -1,9 +1,9 @@
 import os.path as osp
 import torch
 from torch import nn
-from layers.attention import LlamaAttention
+from layers.attention import LlamaAttention, LoraLlamaAttention
 from layers.rms_norm import LlamaRMSNorm
-from layers.matmul import LlamaMLP
+from layers.matmul import LlamaMLP, LoraLlamaMLP
 from layers.rope import init_rope_embeddings
 from utils import npy_to_tensor, load_llama_config, get_attentioin_mask
 from configuration_llama import LlamaConfig
@@ -72,6 +72,26 @@ class LlamaTransformerBlock():
                     grad_bias_v, grad_bias_o)
 
         return grads
+
+class LoraLlamaTransformerBlock(LlamaTransformerBlock):
+    def __init__(self, config: LlamaConfig, input_norm_weight, w_q, w_k, w_v, w_o, 
+                 w_up, w_gate, w_down, post_att_norm_weight,
+                 bias_q=None, bias_k=None, bias_v=None, bias_o=None,
+                 bias_up=None, bias_gate=None, bias_down=None):
+        super(LoraLlamaTransformerBlock, self).__init__(config, input_norm_weight, w_q, w_k, w_v, w_o, w_up, w_gate, \
+            w_down, post_att_norm_weight, bias_q, bias_k, bias_v, bias_o, bias_up, bias_gate, bias_down)
+        self.llama_attention = LoraLlamaAttention(config, w_q, w_k, w_v, w_o, bias_q, bias_k, bias_v, bias_o)
+        self.llama_mlp = LoraLlamaMLP(w_up, w_gate, w_down, bias_up, bias_gate, bias_down)
+    
+    def replace_with_lora(self, q_lora_a, q_lora_b, k_lora_a, k_lora_b, v_lora_a, v_lora_b, o_lora_a, o_lora_b, \
+        up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout):
+        self.llama_attention.replace_with_lora(q_lora_a, q_lora_b, k_lora_a, k_lora_b, v_lora_a, v_lora_b, o_lora_a, \
+            o_lora_b, scaling, dropout)
+        self.llama_mlp.replace_with_lora(up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, \
+            scaling, dropout)
+        
+    def backward(self, grad_output):
+        pass
 
 def test_transformer_block_backward_manual_class():
 

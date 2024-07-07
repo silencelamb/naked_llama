@@ -2,7 +2,7 @@ import os.path as osp
 import torch
 from torch import nn
 from layers.embedding import Embedding
-from layers.transformer_block import LlamaTransformerBlock
+from layers.transformer_block import LlamaTransformerBlock, LoraLlamaTransformerBlock
 from layers.rms_norm import LlamaRMSNorm
 from layers.matmul import MLP
 from layers.rope import init_rope_embeddings
@@ -77,6 +77,54 @@ class LlamaModel():
     def backward(self, grad_output):
         pass
 
+
+class LoraLlamaModel(LlamaModel):
+    def __init__(self, config: LlamaConfig):
+        super(LoraLlamaModel, self).__init__(config)
+        for i in range(config.num_hidden_layers):
+            w_q = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.q_proj.weight.npy'))
+            w_k = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.k_proj.weight.npy'))
+            w_v = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.v_proj.weight.npy'))
+            w_o = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.o_proj.weight.npy'))
+            input_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.input_layernorm.weight.npy'))
+            post_att_norm_weight = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.post_attention_layernorm.weight.npy'))
+            w_up = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.up_proj.weight.npy'))
+            w_gate = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.gate_proj.weight.npy'))
+            w_down = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.down_proj.weight.npy'))
+            bias_q_file = osp.join(config.weights_dir, f'model.layers.{i}.self_attn.q_proj.bias.npy')
+            bias_q = npy_to_tensor(bias_q_file) if osp.exists(bias_q_file) else None
+            bias_k_file = osp.join(config.weights_dir, f'model.layers.{i}.self_attn.k_proj.bias.npy')
+            bias_k = npy_to_tensor(bias_k_file) if osp.exists(bias_k_file) else None
+            bias_v_file = osp.join(config.weights_dir, f'model.layers.{i}.self_attn.v_proj.bias.npy')
+            bias_v = npy_to_tensor(bias_v_file) if osp.exists(bias_v_file) else None
+            bias_o_file = osp.join(config.weights_dir, f'model.layers.{i}.self_attn.o_proj.bias.npy')
+            bias_o = npy_to_tensor(bias_o_file) if osp.exists(bias_o_file) else None
+            
+            self.transformer_blocks[i] = LoraLlamaTransformerBlock(config, input_norm_weight, w_q, w_k, w_v, w_o, w_up, \
+                w_gate, w_down, post_att_norm_weight, bias_q, bias_k, bias_v, bias_o)
+        
+    def replace_with_lora(self, config: LlamaConfig, scaling, dropout):
+        for i, transformer_block in enumerate(self.transformer_blocks):
+            q_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.q_proj.lora_A.weight.npy'))
+            q_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.q_proj.lora_B.weight.npy'))
+            k_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.k_proj.lora_A.weight.npy'))
+            k_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.k_proj.lora_B.weight.npy'))
+            v_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.v_proj.lora_A.weight.npy'))
+            v_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.v_proj.lora_B.weight.npy'))
+            o_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.o_proj.lora_A.weight.npy'))
+            o_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.self_attn.o_proj.lora_B.weight.npy'))
+            up_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.up_proj.lora_A.weight.npy'))
+            up_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.up_proj.lora_B.weight.npy'))
+            gate_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.gate_proj.lora_A.weight.npy'))
+            gate_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.gate_proj.lora_B.weight.npy'))
+            down_lora_a = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.down_proj.lora_A.weight.npy'))
+            down_lora_b = npy_to_tensor(osp.join(config.weights_dir, f'model.layers.{i}.mlp.down_proj.lora_B.weight.npy'))
+            
+            transformer_block.replace_with_lora(q_lora_a, q_lora_b, k_lora_a, k_lora_b, v_lora_a, v_lora_b, o_lora_a, \
+                o_lora_b, up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout)
+    
+    def backward(self, grad_output):
+        pass
 
 
 def test_llama_backward_manual_class():

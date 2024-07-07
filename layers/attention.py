@@ -3,7 +3,7 @@ from torch import nn
 import math
 # from .rope import get_rope_embeddings, apply_rotary_pos_emb, apply_rotary_pos_emb_backward
 from layers.rope import get_rope_embeddings, apply_rotary_pos_emb, apply_rotary_pos_emb_backward, init_rope_embeddings
-from layers.matmul import MLP
+from layers.matmul import MLP, LoraMLP
 from layers.activation import Softmax
 from configuration_llama import LlamaConfig
 from utils import get_attentioin_mask
@@ -82,7 +82,7 @@ class LlamaAttention():
         self.num_kv_heads = config.num_key_value_heads
         self.num_kv_groups = self.num_heads // self.num_kv_heads
         self.cache = None
-    
+        
     def forward(self, hidden_states, mask):
         batch_size, seq_len, hidden_size = hidden_states.shape[0:3]
         # 线性变换
@@ -164,6 +164,29 @@ class LlamaAttention():
         grad_x = grad_x.view(batch_size, seq_len, hidden_size)
 
         return grad_x, grad_w_q, grad_w_k, grad_w_v, grad_w_o, grad_bias_q, grad_bias_k, grad_bias_v, grad_bias_o
+
+
+class LoraLlamaAttention(LlamaAttention):
+
+    def replace_with_lora(self, q_lora_a, q_lora_b, k_lora_a, k_lora_b, v_lora_a, v_lora_b, o_lora_a, o_lora_b, scaling, dropout):
+        self.q_proj.weight.requires_grad_(False)
+        self.k_proj.weight.requires_grad_(False)
+        self.v_proj.weight.requires_grad_(False)
+        self.o_proj.weight.requires_grad_(False)
+        if self.q_proj.bias is not None: self.q_proj.bias.requires_grad_(False)
+        if self.k_proj.bias is not None: self.k_proj.bias.requires_grad_(False)
+        if self.v_proj.bias is not None: self.v_proj.bias.requires_grad_(False)
+        
+        self.q_proj = LoraMLP(self.q_proj.weight, q_lora_a, q_lora_b, scaling, dropout, self.q_proj.bias)
+        self.k_proj = LoraMLP(self.k_proj.weight, k_lora_a, k_lora_b, scaling, dropout, self.k_proj.bias)
+        self.v_proj = LoraMLP(self.v_proj.weight, v_lora_a, v_lora_b, scaling, dropout, self.v_proj.bias)
+        self.o_proj = LoraMLP(self.o_proj.weight, o_lora_a, o_lora_b, scaling, dropout, self.o_proj.bias)
+    
+    def backward(self, grad_output):
+        # 反向传播
+        pass
+
+        return grad_x, grad_w
     
 ### multi_head_attention's backward implementation ###
 def repeat_kv_backward(grad_h: torch.Tensor, n_rep: int) -> torch.Tensor:
