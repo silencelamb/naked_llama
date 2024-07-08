@@ -45,7 +45,8 @@ class LoraMLP:
         self.lora_a = lora_a
         self.lora_b = lora_b
         self.scaling = scaling
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout_rate = dropout
+        self.dropout = nn.Dropout(p=self.dropout_rate)
         self.cache = None
     
     def eval(self):
@@ -61,20 +62,23 @@ class LoraMLP:
         lora_branch_b = torch.matmul(lora_branch_a, self.lora_b.T)
         lora_branch = self.scaling * lora_branch_b
         result += lora_branch
-        self.cache = (dropout_x, lora_branch_a)
+        self.cache = (x, dropout_x, lora_branch_a)
         return result
 
     def backward(self, grad_output):
         grad_x_base, grad_weight, grad_bias = self.base_linear.backward(grad_output)
         
-        dropout_x, lora_branch_a = self.cache
+        x, dropout_x, lora_branch_a = self.cache
         grad_lora_a, grad_lora_b = None, None
 
         r_z, h_z = self.lora_a.shape
         # 计算 Lora 分支的梯度
         grad_lora_temp = torch.matmul(grad_output, self.lora_b) * self.scaling
-        if dropout_x.requires_grad:
-            grad_x_lora = torch.matmul(grad_lora_temp, self.lora_a)
+
+        if x.requires_grad:
+            mask = (dropout_x != 0).float()
+            grad_x_lora = torch.matmul(grad_lora_temp, self.lora_a) 
+            grad_x_lora = grad_x_lora * mask / (1 - self.dropout_rate) 
             grad_x = grad_x_base + grad_x_lora 
         
         if self.lora_a.requires_grad:
@@ -291,7 +295,6 @@ def test_LoraMLP_backward_manual_class():
     dropout = dropout_rate
 
     lora_mlp = LoraMLP(base_weight, lora_a, lora_b, scaling_factor, dropout, base_bias)
-    lora_mlp.eval()
 
     # 假设输入是一个需要梯度的张量
     input_tensor = torch.randn(batch_size, seq_len, hidden_size, requires_grad=True)
@@ -351,8 +354,6 @@ def test_LoraLlamaMLP_backward_manual_class():
     lora_llama_mlp = LoraLlamaMLP(w_up, w_gate, w_down, bias_up, bias_gate, bias_down)
     lora_llama_mlp.replace_with_lora(up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling_factor, dropout)
 
-    # 切换到训练模式
-    lora_llama_mlp.eval()
 
     # 假设输入是一个需要梯度的张量
     input_tensor = torch.randn(batch_size, seq_len, hidden_size, requires_grad=True)
