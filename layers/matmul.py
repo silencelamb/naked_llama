@@ -57,16 +57,33 @@ class LoraMLP:
     def forward(self, x):
         result = self.base_linear.forward(x)
         dropout_x = self.dropout(x)
-        lora_branch = torch.matmul( torch.matmul(dropout_x, self.lora_a.T), self.lora_b.T )
-        lora_branch = self.scaling * lora_branch
+        lora_branch_a = torch.matmul(dropout_x, self.lora_a.T)
+        lora_branch_b = torch.matmul(lora_branch_a, self.lora_b.T)
+        lora_branch = self.scaling * lora_branch_b
         result += lora_branch
-        self.cache = x
+        self.cache = (dropout_x, lora_branch_a)
         return result
 
     def backward(self, grad_output):
-        pass
+        grad_x_base, grad_weight, grad_bias = self.base_linear.backward(grad_output)
+        
+        dropout_x, lora_branch_a = self.cache
+        grad_lora_a, grad_lora_b = None, None
 
-        return grad_x, grad_weight, grad_bias
+        r_z, h_z = self.lora_a.shape
+        # 计算 Lora 分支的梯度
+        grad_lora_temp = torch.matmul(grad_output, self.lora_b) * self.scaling
+        if dropout_x.requires_grad:
+            grad_x_lora = torch.matmul(grad_lora_temp, self.lora_a)
+            grad_x = grad_x_base + grad_x_lora 
+        
+        if self.lora_a.requires_grad:
+            grad_lora_a = torch.matmul(grad_lora_temp.view(-1, r_z).T, dropout_x.view(-1, h_z))
+        
+        if self.lora_b.requires_grad:
+            grad_lora_b = torch.matmul(grad_output.view(-1, h_z).T, lora_branch_a.view(-1, r_z)) * self.scaling
+        
+        return grad_x, grad_weight, grad_bias, grad_lora_a, grad_lora_b
 
 class LlamaMLP:
     def __init__(self, w_up, w_gate, w_down, bias_up=None, bias_gate=None, bias_down=None):
@@ -134,7 +151,26 @@ class LoraLlamaMLP(LlamaMLP):
         self.FFN_down.train()
     
     def backward(self, grad_output):
-        pass
+        grad_x, grad_w_up, grad_w_gate, grad_w_down = None, None, None, None
+        grad_bias_up, grad_bias_gate, grad_bias_down = None, None, None
+        up_proj, gate_proj, gate_proj_act = self.cache
+        # 反向梯度计算类似 LlamaMLP
+        grad_up_proj_gate, grad_w_down, grad_bias_down, grad_lora_a_down, grad_lora_b_down = self.FFN_down.backward(grad_output)
+        
+        grad_up_proj = grad_up_proj_gate * gate_proj_act
+        grad_gate_proj_act = grad_up_proj_gate * up_proj
+        
+        grad_gate_proj = silu_backward(grad_gate_proj_act, gate_proj)
+        
+        grad_hidden_states_gate, grad_w_gate, grad_bias_gate, grad_lora_a_gate, grad_lora_b_gate = self.FFN_gate.backward(grad_gate_proj)
+        
+        grad_hidden_states_up, grad_w_up, grad_bias_up, grad_lora_a_up, grad_lora_b_up = self.FFN_up.backward(grad_up_proj)
+        
+        grad_x = grad_hidden_states_gate + grad_hidden_states_up
+        
+        return grad_x, grad_w_up, grad_w_gate, grad_w_down, grad_bias_up, grad_bias_gate, grad_bias_down, \
+            grad_lora_a_up, grad_lora_b_up, grad_lora_a_gate, grad_lora_b_gate, grad_lora_a_down, grad_lora_b_down
+    
 class LlamaMLPOrigin(nn.Module):
     # from transformers modeling_llama.py
     def __init__(self, hidden_size, intermediate_size, mlp_bias=None):
@@ -238,12 +274,133 @@ def test_LlamaMLP_backward_manual_class():
     print(torch.testing.assert_close(dbias_g_class, dbias_g_manual))
     print(torch.testing.assert_close(dbias_d_class, dbias_d_manual))
 
+def test_LoraMLP_backward_manual_class():
+    # LoraMLP反向计算比较：手写的反向实现与PyTorch自带的自动求导
+    batch_size = 2
+    seq_len = 6
+    hidden_size = 64
+    intermediate_size = 8
+    dropout_rate = 0.1
+    scaling_factor = 0.5
+
+    # 初始化LoraMLP和相关参数
+    base_weight = torch.randn(hidden_size, hidden_size, requires_grad=True)
+    lora_a = torch.randn(intermediate_size, hidden_size, requires_grad=True)
+    lora_b = torch.randn(hidden_size, intermediate_size, requires_grad=True)
+    base_bias = torch.randn(hidden_size, requires_grad=True)
+    dropout = dropout_rate
+
+    lora_mlp = LoraMLP(base_weight, lora_a, lora_b, scaling_factor, dropout, base_bias)
+    lora_mlp.eval()
+
+    # 假设输入是一个需要梯度的张量
+    input_tensor = torch.randn(batch_size, seq_len, hidden_size, requires_grad=True)
+    dy = 0.1 * torch.randn_like(input_tensor)
+
+    # 前向传递
+    output = lora_mlp.forward(input_tensor)
+
+    # 自动求导反向传播
+    output.backward(dy, retain_graph=True)
+    dx_class, dbase_weight_class, dlora_a_class, dlora_b_class, dbias_class = \
+        input_tensor.grad.clone(), base_weight.grad.clone(), \
+        lora_a.grad.clone(), lora_b.grad.clone(), \
+        base_bias.grad.clone()
+
+    # 手写反向传播
+    dx_manual, dbase_weight_manual, dbias_manual, dlora_a_manual, dlora_b_manual = lora_mlp.backward(dy)
+
+    gradient_names = ["x", "base_weight", "lora_a", "lora_b", "base_bias"]
+    auto_grads = [dx_class, dbase_weight_class, dlora_a_class, dlora_b_class, dbias_class]
+    manual_grads = [dx_manual, dbase_weight_manual, dlora_a_manual, dlora_b_manual, dbias_manual]
+
+    # 比较反向传播的梯度
+    for name, auto_grad, manual_grad in zip(gradient_names, auto_grads, manual_grads):
+        try:
+            torch.testing.assert_close(auto_grad, manual_grad)
+            print(f"Gradient match for {name}: PASSED")
+        except AssertionError as e:
+            print(f"Gradient match for {name}: FAILED")
+            print(e)
+
+def test_LoraLlamaMLP_backward_manual_class():
+    # LoraLlamaMLP反向计算比较：手写的反向实现与PyTorch自带的自动求导
+    batch_size = 2
+    seq_len = 6
+    hidden_size = 64
+    intermediate_size = 8
+    dropout_rate = 0.1
+    scaling_factor = 0.5
+
+    # 初始化LoraLlamaMLP和相关参数
+    w_up = torch.randn(hidden_size, hidden_size, requires_grad=True)
+    w_gate = torch.randn(hidden_size, hidden_size, requires_grad=True)
+    w_down = torch.randn(hidden_size, hidden_size, requires_grad=True)
+    bias_up = torch.randn(hidden_size, requires_grad=True)
+    bias_gate = torch.randn(hidden_size, requires_grad=True)
+    bias_down = torch.randn(hidden_size, requires_grad=True)
+
+    up_lora_a = torch.randn(intermediate_size, hidden_size, requires_grad=True)
+    up_lora_b = torch.randn(hidden_size, intermediate_size, requires_grad=True)
+    gate_lora_a = torch.randn(intermediate_size, hidden_size, requires_grad=True)
+    gate_lora_b = torch.randn(hidden_size, intermediate_size, requires_grad=True)
+    down_lora_a = torch.randn(intermediate_size, hidden_size, requires_grad=True)
+    down_lora_b = torch.randn(hidden_size, intermediate_size, requires_grad=True)
+    dropout = dropout_rate
+
+    lora_llama_mlp = LoraLlamaMLP(w_up, w_gate, w_down, bias_up, bias_gate, bias_down)
+    lora_llama_mlp.replace_with_lora(up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling_factor, dropout)
+
+    # 切换到训练模式
+    lora_llama_mlp.eval()
+
+    # 假设输入是一个需要梯度的张量
+    input_tensor = torch.randn(batch_size, seq_len, hidden_size, requires_grad=True)
+    dy = 0.1 * torch.randn_like(input_tensor)
+
+    # 前向传递
+    output = lora_llama_mlp.forward(input_tensor)
+
+    # 自动求导反向传播
+    output.backward(dy, retain_graph=True)
+    dx_class, dbase_weight_up_class, dbase_weight_gate_class, dbase_weight_down_class, \
+        dbias_up_class, dbias_gate_class, dbias_down_class, dlora_a_up_class, dlora_b_up_class, \
+            dlora_a_gate_class, dlora_b_gate_class, dlora_a_down_class, dlora_b_down_class = \
+    [_.grad.clone() for _ in [input_tensor, w_up, w_gate, w_down, bias_up, bias_gate, bias_down, \
+                              up_lora_a, up_lora_b, gate_lora_a, gate_lora_a, down_lora_a, \
+                                down_lora_b]]
+
+    # 手写反向传播
+    dx_manual, dbase_weight_up_manual, dbase_weight_gate_manual, dbase_weight_down_manual, \
+        dbias_up_manual, dbias_gate_manual, dbias_down_manual, dlora_a_up_manual, \
+            dlora_b_up_manual, dlora_a_gate_manual, dlora_b_gate_manual, dlora_a_down_manual, \
+                dlora_b_down_manual = lora_llama_mlp.backward(dy)
+
+    gradient_names = ["x", "base_weight_up", "base_weight_gate", "base_weight_down", "bias_up", \
+                      "bias_gate", "bias_down", "lora_a_up", "lora_b_up", "lora_a_gate", "lora_b_gate",\
+                          "lora_a_down", "lora_b_down"]
+    auto_grads = [dx_class, dbase_weight_up_class, dbase_weight_gate_class, dbase_weight_down_class,\
+                   dbias_up_class, dbias_gate_class, dbias_down_class, dlora_a_up_class, dlora_b_up_class, \
+                    dlora_a_gate_class, dlora_b_gate_class, dlora_a_down_class, dlora_b_down_class]
+    manual_grads = [dx_manual, dbase_weight_up_manual, dbase_weight_gate_manual, dbase_weight_down_manual, \
+                    dbias_up_manual, dbias_gate_manual, dbias_down_manual, dlora_a_up_manual, dlora_b_up_manual, \
+                        dlora_a_gate_manual, dlora_b_gate_manual, dlora_a_down_manual, dlora_b_down_manual]
+
+    # 比较反向传播的梯度
+    for name, auto_grad, manual_grad in zip(gradient_names, auto_grads, manual_grads):
+        try:
+            torch.testing.assert_close(auto_grad, manual_grad)
+            print(f"Gradient match for {name}: PASSED")
+        except AssertionError as e:
+            print(f"Gradient match for {name}: FAILED")
+            print(e)
 
 
 if __name__ == "__main__":
     test_matmul_backward_manual_class()
     test_LlamaMLP_backward_manual_class()
-    
+    test_LoraMLP_backward_manual_class()
+    # test_LoraLlamaMLP_backward_manual_class()
 
 
 
