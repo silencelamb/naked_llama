@@ -182,6 +182,18 @@ class LoraLlamaAttention(LlamaAttention):
         self.v_proj = LoraMLP(self.v_proj.weight, v_lora_a, v_lora_b, scaling, dropout, self.v_proj.bias)
         self.o_proj = LoraMLP(self.o_proj.weight, o_lora_a, o_lora_b, scaling, dropout, self.o_proj.bias)
     
+    def eval(self):
+        self.q_proj.eval()
+        self.k_proj.eval()
+        self.v_proj.eval()
+        self.o_proj.eval()
+    
+    def train(self):
+        self.q_proj.train()
+        self.k_proj.train()
+        self.v_proj.train()
+        self.o_proj.train()
+        
     def backward(self, grad_output):
         # 反向传播
         pass

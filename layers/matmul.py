@@ -48,6 +48,12 @@ class LoraMLP:
         self.dropout = nn.Dropout(p=dropout)
         self.cache = None
     
+    def eval(self):
+        self.dropout.eval()
+    
+    def train(self):
+        self.dropout.train()
+    
     def forward(self, x):
         result = self.base_linear.forward(x)
         dropout_x = self.dropout(x)
@@ -68,11 +74,6 @@ class LlamaMLP:
         self.FFN_gate = MLP(w_gate, bias_gate)
         self.FFN_down = MLP(w_down, bias_down)
         self.cache = None
-    
-    def replace_with_lora(self, up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout):
-        self.FFN_up = LoraMLP(self.FFN_up.weight, up_lora_a, up_lora_b, scaling, dropout, self.FFN_up.bias)
-        self.FFN_gate = LoraMLP(self.FFN_gate.weight, gate_lora_a, gate_lora_b, scaling, dropout, self.FFN_gate.bias)
-        self.FFN_down = LoraMLP(self.FFN_down.weight, down_lora_a, down_lora_b, scaling, dropout, self.FFN_down.bias)
     
     def forward(self, hidden_states):
         up_proj = self.FFN_up.forward(hidden_states)
@@ -121,6 +122,16 @@ class LoraLlamaMLP(LlamaMLP):
         self.FFN_up = LoraMLP(self.FFN_up.weight, up_lora_a, up_lora_b, scaling, dropout, self.FFN_up.bias)
         self.FFN_gate = LoraMLP(self.FFN_gate.weight, gate_lora_a, gate_lora_b, scaling, dropout, self.FFN_gate.bias)
         self.FFN_down = LoraMLP(self.FFN_down.weight, down_lora_a, down_lora_b, scaling, dropout, self.FFN_down.bias)
+
+    def eval(self):
+        self.FFN_up.eval()
+        self.FFN_gate.eval()
+        self.FFN_down.eval()
+    
+    def train(self):
+        self.FFN_up.train()
+        self.FFN_gate.train()
+        self.FFN_down.train()
     
     def backward(self, grad_output):
         pass

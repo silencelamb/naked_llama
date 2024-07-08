@@ -89,6 +89,14 @@ class LoraLlamaTransformerBlock(LlamaTransformerBlock):
             o_lora_b, scaling, dropout)
         self.llama_mlp.replace_with_lora(up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, \
             scaling, dropout)
+
+    def eval(self):
+        self.llama_attention.eval()
+        self.llama_mlp.eval()
+    
+    def train(self):
+        self.llama_attention.train()
+        self.llama_mlp.train()
         
     def backward(self, grad_output):
         pass

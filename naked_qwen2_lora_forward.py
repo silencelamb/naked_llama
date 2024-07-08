@@ -64,6 +64,7 @@ if __name__ == '__main__':
     lora_alpha = 16
     lora_r = 64
     llama2.replace_with_lora(config, scaling=lora_alpha/lora_r, dropout=0.05)
+    llama2.eval()
     print('loaded lora weights!')
     logits = llama2.forward(token_ids)
     
