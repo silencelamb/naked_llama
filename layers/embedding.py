@@ -25,11 +25,9 @@ class Embedding():
     def backward(self, dy):
         input_ids = self.cache
         grad_embedding_weights = torch.zeros_like(self.embedding_weights)
-        
-        for i in range(input_ids.shape[0]):
-            for j in range(input_ids.shape[1]):
-                idx = input_ids[i, j]
-                grad_embedding_weights[idx] += dy[i, j]
+        emb_dim = self.embedding_weights.size(1)
+        # 按索引对梯度并行累加
+        grad_embedding_weights.index_add_(0, input_ids.view(-1), dy.view(-1, emb_dim))
         
         return grad_embedding_weights
 
