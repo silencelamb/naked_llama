@@ -4,16 +4,19 @@ from torch import nn
 from layers.embedding import Embedding
 from layers.transformer_block import LlamaTransformerBlock, LoraLlamaTransformerBlock
 from layers.rms_norm import LlamaRMSNorm
-from layers.matmul import MLP
+from layers.matmul import MLP 
 from layers.rope import init_rope_embeddings
 from utils import npy_to_tensor, load_llama_config, get_attentioin_mask
 from configuration_llama import LlamaConfig
+import torch.nn.functional as F
+from transformers import AutoTokenizer, LlamaForCausalLM
+
 
 class LlamaModel():
     def __init__(self, config: LlamaConfig):
         self.config = config
         embdding_weights = npy_to_tensor(osp.join(config.weights_dir, 'model.embed_tokens.weight.npy'))
-        self.embdding = Embedding(embdding_weights)
+        self.embdding = Embedding(embdding_weights.requires_grad_(True))
         
         self.transformer_blocks = []
         for i in range(config.num_hidden_layers):
@@ -34,15 +37,19 @@ class LlamaModel():
             bias_v = npy_to_tensor(bias_v_file) if osp.exists(bias_v_file) else None
             bias_o_file = osp.join(config.weights_dir, f'model.layers.{i}.self_attn.o_proj.bias.npy')
             bias_o = npy_to_tensor(bias_o_file) if osp.exists(bias_o_file) else None
-            transformer_block = LlamaTransformerBlock(config, input_norm_weight, w_q, w_k, w_v, w_o, w_up, w_gate, w_down, \
-                post_att_norm_weight, bias_q, bias_k, bias_v, bias_o)
+            transformer_block = LlamaTransformerBlock(config, input_norm_weight.requires_grad_(True), 
+                                                      w_q.requires_grad_(True), w_k.requires_grad_(True), 
+                                                      w_v.requires_grad_(True), w_o.requires_grad_(True), 
+                                                      w_up.requires_grad_(True), w_gate.requires_grad_(True), 
+                                                      w_down.requires_grad_(True), post_att_norm_weight.requires_grad_(True), 
+                                                      bias_q, bias_k, bias_v, bias_o)
             self.transformer_blocks.append(transformer_block)
         
         norm_weight = npy_to_tensor(osp.join(config.weights_dir, 'model.norm.weight.npy'))
-        self.output_rmsnorm = LlamaRMSNorm(norm_weight, config.rms_norm_eps)
+        self.output_rmsnorm = LlamaRMSNorm(norm_weight.requires_grad_(True), config.rms_norm_eps)
         
         lm_head_weight = npy_to_tensor(osp.join(config.weights_dir, 'lm_head.weight.npy'))
-        self.lm_head = MLP(lm_head_weight)
+        self.lm_head = MLP(lm_head_weight.requires_grad_(True))
         
         self.cache = None
     
@@ -75,7 +82,50 @@ class LlamaModel():
         return logits
     
     def backward(self, grad_output):
-        pass
+        """
+        llama2反向
+        """
+        grads = {}
+        
+        # 反向传播 lm_head 
+        grad_hs, grad_lm_head_weight, _ = self.lm_head.backward(grad_output)
+        grads['lm_head_weight_grad'] = grad_lm_head_weight.clone()
+
+        # 反向传播 RMSNorm
+        grad_hs, grad_norm_weight = self.output_rmsnorm.backward(grad_hs)
+        grads['final_norm_weight_grad'] = grad_norm_weight.clone()
+        
+        # 反向传播 Transformer blocks
+        for layer_id in reversed(range(len(self.transformer_blocks))):
+            grad_output = self.transformer_blocks[layer_id].backward(grad_hs)
+            grad_hs = grad_output[0]
+
+            # 存储每个 transformer block 的梯度
+            grads[f'block_{layer_id}_input_layernorm_weight_grad'] = grad_output[1].clone()
+            grads[f'block_{layer_id}_self_attn_q_proj_weight_grad'] = grad_output[2].clone()
+            grads[f'block_{layer_id}_self_attn_k_proj_weight_grad'] = grad_output[3].clone()
+            grads[f'block_{layer_id}_self_attn_v_proj_weight_grad'] = grad_output[4].clone()
+            grads[f'block_{layer_id}_self_attn_o_proj_weight_grad'] = grad_output[5].clone()
+            grads[f'block_{layer_id}_post_attention_layernorm_weight_grad'] = grad_output[6].clone()
+            grads[f'block_{layer_id}_mlp_up_proj_weight_grad'] = grad_output[7].clone()
+            grads[f'block_{layer_id}_mlp_gate_proj_weight_grad'] = grad_output[8].clone()
+            grads[f'block_{layer_id}_mlp_down_proj_weight_grad'] = grad_output[9].clone()
+            if grad_output[10] is not None:
+                grads[f'block_{layer_id}_self_attn_q_proj_bias_grad'] = grad_output[10].clone()
+            if grad_output[11] is not None:
+                grads[f'block_{layer_id}_self_attn_k_proj_bias_grad'] = grad_output[11].clone()
+            if grad_output[12] is not None:
+                grads[f'block_{layer_id}_self_attn_v_proj_bias_grad'] = grad_output[12].clone()
+            if grad_output[13] is not None:
+                grads[f'block_{layer_id}_self_attn_o_proj_bias_grad'] = grad_output[13].clone()
+
+        
+        # 反向传播 embedding 
+        grad_embedding_weights = self.embdding.backward(grad_hs)
+        grads['embedding_weight_grad'] = grad_embedding_weights.clone()
+        
+        return grads
+
 
 
 class LoraLlamaModel(LlamaModel):
@@ -128,8 +178,92 @@ class LoraLlamaModel(LlamaModel):
 
 
 def test_llama_backward_manual_class():
+    # initial rope embeddings
+    init_rope_embeddings(dim=128)
+    prompt = "Hey, are you conscious? Can you talk to me?"
+    model_dict = {
+        "llama2_7b": {
+            'tokenizer': 'meta-llama/Llama-2-7b-hf',
+            'hf_model': 'meta-llama/Llama-2-7b-hf',
+            'config_path': 'configs/llama2_7b_config.json',
+            'weights_dir': 'weights/llama2_7b/'
+        },
+    }
+    model_name = "llama2_7b"
+        
+    print('Model:', model_name) 
+    config = load_llama_config(model_dict[model_name]['config_path'])
+    config.weights_dir = model_dict[model_name]['weights_dir']
+    # tokenization
+    tokenizer = AutoTokenizer.from_pretrained(model_dict[model_name]['tokenizer'])
+    inputs = tokenizer(prompt, return_tensors="pt")
+    token_ids = inputs.input_ids
+    # 输入序列
+    inputs = token_ids[:, :-1]  
+    # 目标序列
+    targets = token_ids[:, 1:]  
 
-    pass
+    model = LlamaForCausalLM.from_pretrained(model_dict[model_name]['hf_model'])
+    # hf 前向
+    outputs = model(input_ids=inputs)
+    hf_logits = outputs.logits
+
+    # naked_llama 前向
+    llama2 = LlamaModel(config)
+    logits = llama2.forward(inputs) 
+
+    grad_output = 0.1 * torch.randn_like(logits)
+    hf_logits.backward(grad_output, retain_graph=True)
+    
+    # 交叉熵计算loss
+    # loss = F.cross_entropy(hf_logits.view(-1, hf_logits.size(-1)), targets.view(-1))
+    # loss.backward(retain_graph=True)
+
+    # 保存hf_model自动求导梯度
+    hf_grads = {}
+    
+    hf_grads['lm_head_weight_grad'] = model.lm_head.weight.grad.clone()
+    hf_grads['final_norm_weight_grad'] = model.model.norm.weight.grad.clone()
+    
+    for i, block in enumerate(model.model.layers):
+        hf_grads[f'block_{i}_input_layernorm_weight_grad'] = block.input_layernorm.weight.grad.clone()
+        hf_grads[f'block_{i}_post_attention_layernorm_weight_grad'] = block.post_attention_layernorm.weight.grad.clone()
+        hf_grads[f'block_{i}_mlp_up_proj_weight_grad'] = block.mlp.up_proj.weight.grad.clone()
+        hf_grads[f'block_{i}_mlp_gate_proj_weight_grad'] = block.mlp.gate_proj.weight.grad.clone()
+        hf_grads[f'block_{i}_mlp_down_proj_weight_grad'] = block.mlp.down_proj.weight.grad.clone()
+        hf_grads[f'block_{i}_self_attn_q_proj_weight_grad'] = block.self_attn.q_proj.weight.grad.clone()
+        hf_grads[f'block_{i}_self_attn_k_proj_weight_grad'] = block.self_attn.k_proj.weight.grad.clone()
+        hf_grads[f'block_{i}_self_attn_v_proj_weight_grad'] = block.self_attn.v_proj.weight.grad.clone()
+        hf_grads[f'block_{i}_self_attn_o_proj_weight_grad'] = block.self_attn.o_proj.weight.grad.clone()
+        if block.self_attn.q_proj.bias is not None and hasattr(block.self_attn.q_proj.bias, 'grad'):
+            hf_grads[f'block_{i}_self_attn_q_proj_bias_grad'] = block.self_attn.q_proj.bias.grad.clone()
+        if block.self_attn.k_proj.bias is not None and hasattr(block.self_attn.k_proj.bias, 'grad'):
+            hf_grads[f'block_{i}_self_attn_k_proj_bias_grad'] = block.self_attn.k_proj.bias.grad.clone()
+        if block.self_attn.v_proj.bias is not None and hasattr(block.self_attn.v_proj.bias, 'grad'):
+            hf_grads[f'block_{i}_self_attn_v_proj_bias_grad'] = block.self_attn.v_proj.bias.grad.clone()
+        if block.self_attn.o_proj.bias is not None and hasattr(block.self_attn.o_proj.bias, 'grad'):
+            hf_grads[f'block_{i}_self_attn_o_proj_bias_grad'] = block.self_attn.o_proj.bias.grad.clone()
+    
+    hf_grads['embedding_weight_grad'] = model.model.embed_tokens.weight.grad.clone()
+
+    # 手动实现交叉熵损失的反向计算
+    # softmax_logits = torch.softmax(logits, dim=-1)  # shape: (B, S, V)
+    # targets_one_hot = torch.zeros_like(logits)
+    # targets_one_hot.scatter_(-1, targets.unsqueeze(-1), 1)  
+    # grad_output = softmax_logits - targets_one_hot  # shape: (B, S, V)
+    manual_grads = llama2.backward(grad_output)
+
+    for key in hf_grads:
+        hf_grad = hf_grads[key]
+        hw_grad = manual_grads.get(key)
+        if hw_grad is None:
+            print(f'Missing grad for {key} in manual backward.')
+            continue
+        try:
+            torch.testing.assert_close(hf_grad, hw_grad, rtol=5e-4, atol=5e-4)
+            print(f'{key}: grads match.')
+        except AssertionError as e:
+            print(f'{key}: grads do not match. {e}')
 
 if __name__ == '__main__':
 
