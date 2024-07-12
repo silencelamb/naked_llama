@@ -26,9 +26,16 @@ class Embedding():
         input_ids = self.cache
         grad_embedding_weights = torch.zeros_like(self.embedding_weights)
         emb_dim = self.embedding_weights.size(1)
-        # 按索引对梯度并行累加
+        # version1:按索引并行累加梯度
         grad_embedding_weights.index_add_(0, input_ids.view(-1), dy.view(-1, emb_dim))
+        """
+        version2:循环查找索引累加梯度
         
+        for i in range(input_ids.shape[0]):
+            for j in range(input_ids.shape[1]):
+                idx = input_ids[i, j]
+                grad_embedding_weights[idx] += dy[i, j]
+        """
         return grad_embedding_weights
 
 
@@ -57,8 +64,8 @@ def test_embedding_lookup_manual_class():
 
     # manual backward的结果
     dx_manual = embedding.backward(dy)
-
-    print(torch.testing.assert_close(dx_ref, dx_manual))
+    # 最小可通过误差：1e-6
+    print(torch.testing.assert_close(dx_ref, dx_manual, rtol=1e-6, atol=1e-6))
 
 
 if __name__ == '__main__':
