@@ -86,9 +86,6 @@ class LoraMLP:
         
         if self.lora_b.requires_grad:
             grad_lora_b = torch.matmul(grad_output.view(-1, h_z).T, lora_branch_a.view(-1, r_z)) * self.scaling
-        
-        # 反向传播后 del cache
-        del self.cache
 
         if self.base_linear.weight.requires_grad:
             return grad_x_base, grad_weight_base, grad_bias_base, grad_lora_a, grad_lora_b
@@ -208,7 +205,7 @@ def test_matmul_backward_manual_class():
     # 假设输入是一个需要梯度的张量
     input_tensor = torch.randn(batch_size, seq_len, hidden_size)
     # 定义权重
-    weight = torch.ones(intermediate_size, hidden_size).requires_grad_(True)
+    weight = torch.randn(intermediate_size, hidden_size).requires_grad_(True)
     bias = torch.randn(intermediate_size).requires_grad_(True)
     
     input_tensor.requires_grad_(True)
@@ -225,7 +222,7 @@ def test_matmul_backward_manual_class():
 
     dx_manual, dw_manual, dbias_manual = mlp.backward(dy)
 
-    print(torch.testing.assert_close(dx_class, dx_manual))
+    print(torch.testing.assert_close(dx_class, dx_manual, rtol=1e-20, atol=1e-20))
     print(torch.testing.assert_close(dw_class, dw_manual))
     print(torch.testing.assert_close(dbias_class, dbias_manual))
 
@@ -274,7 +271,56 @@ def test_LlamaMLP_backward_manual_class():
     dx_manual, du_manual, dg_manual, dd_manual, dbias_u_manual, dbias_g_manual, dbias_d_manual = llama_mlp_manual.backward(dy)
 
     print(torch.testing.assert_close(output_class, output_manual))
-    print(torch.testing.assert_close(dx_class, dx_manual))
+    print(torch.testing.assert_close(dx_class, dx_manual, rtol=1e-8, atol=1e-8))
+    print(torch.testing.assert_close(du_class, du_manual, rtol=1e-20, atol=1e-20))
+    print(torch.testing.assert_close(dg_class, dg_manual, rtol=1e-7, atol=1e-7))
+    print(torch.testing.assert_close(dd_class, dd_manual, rtol=1e-20, atol=1e-20))
+    print(torch.testing.assert_close(dbias_u_class, dbias_u_manual))
+    print(torch.testing.assert_close(dbias_g_class, dbias_g_manual))
+    print(torch.testing.assert_close(dbias_d_class, dbias_d_manual))
+
+def test_LlamaMLP_backward_manual_auto():
+    # MLP反向计算比较：手写的反向实现与pytorch自带的自动求导
+    batch_size = 4
+    seq_len = 12
+    hidden_size = 128
+    intermediate_size = 64
+    # bias = True, only for test, llama2 is without bias, however Qwen2 is with bias
+    weight_u = torch.randn(intermediate_size, hidden_size).requires_grad_(True)
+    weight_g = torch.randn(intermediate_size, hidden_size).requires_grad_(True)
+    weight_d = torch.randn(hidden_size, intermediate_size).requires_grad_(True)
+    bias_u = torch.randn(intermediate_size).requires_grad_(True)
+    bias_g = torch.randn(intermediate_size).requires_grad_(True)
+    bias_d = torch.randn(hidden_size).requires_grad_(True)
+
+    llama_mlp = LlamaMLP(weight_u, weight_g, weight_d, bias_u, bias_g, bias_d)
+
+    # 假设输入是一个需要梯度的张量
+
+    input_tensor = torch.randn(batch_size, seq_len, hidden_size)
+    # 定义输出的grad
+    dy = .1 * torch.randn_like(input_tensor)
+    
+    input_tensor.requires_grad_(True)
+
+    # 前向传递
+    output_class = llama_mlp.forward(input_tensor)
+    
+    output_class.backward(dy, retain_graph=True)
+    dx_class, du_class, dg_class, dd_class, dbias_u_class, dbias_g_class, dbias_d_class = \
+                                                [_.grad.clone() for _ in [input_tensor, 
+                                                   llama_mlp.FFN_up.weight,
+                                                   llama_mlp.FFN_gate.weight, 
+                                                   llama_mlp.FFN_down.weight,
+                                                   llama_mlp.FFN_up.bias,
+                                                   llama_mlp.FFN_gate.bias, 
+                                                   llama_mlp.FFN_down.bias]
+                                                 ]
+
+    input_tensor = input_tensor.clone().detach().requires_grad_(True)
+    dx_manual, du_manual, dg_manual, dd_manual, dbias_u_manual, dbias_g_manual, dbias_d_manual = llama_mlp.backward(dy)
+
+    print(torch.testing.assert_close(dx_class, dx_manual, rtol=1e-10, atol=1e-10))
     print(torch.testing.assert_close(du_class, du_manual))
     print(torch.testing.assert_close(dg_class, dg_manual))
     print(torch.testing.assert_close(dd_class, dd_manual))
@@ -392,10 +438,11 @@ def test_LoraLlamaMLP_backward_manual_class():
 
 
 if __name__ == "__main__":
-    test_matmul_backward_manual_class()
+    # test_matmul_backward_manual_class()
     test_LlamaMLP_backward_manual_class()
-    test_LoraMLP_backward_manual_class()
-    test_LoraLlamaMLP_backward_manual_class()
+    # test_LlamaMLP_backward_manual_auto()
+    # test_LoraMLP_backward_manual_class()
+    # test_LoraLlamaMLP_backward_manual_class()
 
 
 
