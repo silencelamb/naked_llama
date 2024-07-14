@@ -44,11 +44,11 @@ class ScaledDotProductAttention():
         attention_weights = self.softmax.forward(scaled_scores, dtype=torch.float32)
         # weighted sum
         output = torch.matmul(attention_weights, value)
-        self.cache = (query, key, value, scaled_scores, attention_weights)
+        self.cache = (query, key, value, attention_weights)
         return output
 
     def backward(self, grad_output):
-        query, key, value, scaled_scores, attention_weights = self.cache
+        query, key, value, attention_weights = self.cache
         head_dim = query.size(-1)  
     
         # 反向传播

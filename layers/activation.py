@@ -19,11 +19,11 @@ class Softmax:
         # softmax_rst = torch.exp(x) / torch.exp(x).sum(dim=-1, keepdim=True) 
         # 使用稳定实现的softmax
         softmax_rst = nn.functional.softmax(x, dim=self.dim, dtype=dtype)
-        self.cache = (x, softmax_rst)
+        self.cache = softmax_rst
         return softmax_rst
 
     def backward(self, grad_output):
-        x, softmax_rst = self.cache
+        softmax_rst = self.cache
         grad_x = softmax_rst * (grad_output - torch.sum(grad_output * softmax_rst, dim=-1, keepdim=True))
         return grad_x
 

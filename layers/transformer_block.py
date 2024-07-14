@@ -39,8 +39,6 @@ class LlamaTransformerBlock():
         hidden_states_5 = self.llama_mlp.forward(hidden_states_4)
 
         hidden_states_6 = residual_2 + hidden_states_5
-
-        self.cache = (hidden_states, hidden_states_3, hidden_states_4, )
         
         outputs = hidden_states_6
 
