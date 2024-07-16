@@ -1,5 +1,5 @@
 from prettytable import PrettyTable
-TFOPs = 1e12
+TFLOPs = 1e12
 
 def analyze_pretrain_computation(batch_size, seq_len, vocab_size, hidden_size, head_num, kv_head, immediate_size, layer_num, mlp_style='llama'):
     '''
@@ -127,9 +127,9 @@ if __name__ == '__main__':
     llama2_computations = analyze_pretrain_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=32000, hidden_size=4096, \
         head_num=32, kv_head=32, immediate_size=11008, layer_num=32)
     table = PrettyTable()
-    table.field_names = ["name", "TFOPs"]
+    table.field_names = ["name", "TFLOPs"]
     for k, v in llama2_computations.items():
-        table.add_row([k, f'{v/TFOPs: 0.4f}'])
+        table.add_row([k, f'{v/TFLOPs: 0.4f}'])
     print(table)
         
     # Qwen2 7B, pretrain/SFT
@@ -138,9 +138,9 @@ if __name__ == '__main__':
     qwen2_computations = analyze_pretrain_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28)
     table = PrettyTable()
-    table.field_names = ["name", "TFOPs"]
+    table.field_names = ["name", "TFLOPs"]
     for k, v in qwen2_computations.items():
-        table.add_row([k, f'{v/TFOPs: 0.4f}'])
+        table.add_row([k, f'{v/TFLOPs: 0.4f}'])
     print(table)
 
     # Qwen2 7B, pretrain/SFT
@@ -149,9 +149,9 @@ if __name__ == '__main__':
     qwen2_computations = analyze_pretrain_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28)
     table = PrettyTable()
-    table.field_names = ["name", "TFOPs"]
+    table.field_names = ["name", "TFLOPs"]
     for k, v in qwen2_computations.items():
-        table.add_row([k, f'{v/TFOPs: 0.4f}'])
+        table.add_row([k, f'{v/TFLOPs: 0.4f}'])
     print(table)
 
     # Qwen2 7B, lora finetuning
@@ -160,8 +160,8 @@ if __name__ == '__main__':
     qwen2_computations = analyze_lora_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28, lora_r=64)
     table = PrettyTable()
-    table.field_names = ["name", "TFOPs"]
+    table.field_names = ["name", "TFLOPs"]
     for k, v in qwen2_computations.items():
-        table.add_row([k, f'{v/TFOPs: 0.4f}'])
+        table.add_row([k, f'{v/TFLOPs: 0.4f}'])
     print(table)
 
