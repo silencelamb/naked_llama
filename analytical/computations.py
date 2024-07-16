@@ -53,8 +53,9 @@ def analyze_training_computation(batch_size, seq_len, vocab_size, hidden_size, h
 if __name__ == '__main__':
 
     # llama2 7B
-    print('llama2-7B ===============>>>>>>>>>>>>>>>')
-    llama2_compuations = analyze_training_computation(batch_size=1, seq_len=4096, vocab_size=32000, hidden_size=4096, \
+    batch_size, seq_len = 1, 4096
+    print(f'============= llama2-7B ********* batch_size: {batch_size}, seq_len: {seq_len} =============')
+    llama2_compuations = analyze_training_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=32000, hidden_size=4096, \
         head_num=32, kv_head=32, immediate_size=11008, layer_num=32)
     table = PrettyTable()
     table.field_names = ["name", "TOPS"]
@@ -63,8 +64,9 @@ if __name__ == '__main__':
     print(table)
         
     # Qwen2 7B
-    print('Qwe2-7B ===============>>>>>>>>>>>>>>>')
-    qwen2_compuations = analyze_training_computation(batch_size=1, seq_len=4096, vocab_size=152064, hidden_size=3584, \
+    batch_size, seq_len = 1, 4096
+    print(f'============= Qwen-2  7B ********* batch_size: {batch_size}, seq_len: {seq_len} =============')
+    qwen2_compuations = analyze_training_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28)
     table = PrettyTable()
     table.field_names = ["name", "TOPS"]
@@ -73,8 +75,9 @@ if __name__ == '__main__':
     print(table)
 
     # Qwen2 7B
-    print('Qwe2-7B ===============>>>>>>>>>>>>>>>')
-    qwen2_compuations = analyze_training_computation(batch_size=2, seq_len=512, vocab_size=152064, hidden_size=3584, \
+    batch_size, seq_len = 2, 512
+    print(f'============= Qwen-2  7B ********* batch_size: {batch_size}, seq_len: {seq_len} =============')
+    qwen2_compuations = analyze_training_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28)
     table = PrettyTable()
     table.field_names = ["name", "TOPS"]
