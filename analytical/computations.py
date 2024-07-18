@@ -133,7 +133,7 @@ if __name__ == '__main__':
     print(table)
         
     # Qwen2 7B, pretrain/SFT
-    batch_size, seq_len = 1, 4096
+    batch_size, seq_len = 1, 2048
     print(f'===== Qwen-2  7B pretrain/SFT********* batch_size: {batch_size}, seq_len: {seq_len} =====')
     qwen2_computations = analyze_pretrain_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28)
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     print(table)
 
     # Qwen2 7B, pretrain/SFT
-    batch_size, seq_len = 2, 512
+    batch_size, seq_len = 1, 512
     print(f'===== Qwen-2  7B pretrain/SFT********* batch_size: {batch_size}, seq_len: {seq_len} =====')
     qwen2_computations = analyze_pretrain_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28)
@@ -155,13 +155,37 @@ if __name__ == '__main__':
     print(table)
 
     # Qwen2 7B, lora finetuning
-    batch_size, seq_len = 2, 512
+    batch_size, seq_len = 1, 512
     print(f'===== Qwen-2  7B lora finetuning********* batch_size: {batch_size}, seq_len: {seq_len} =====')
     qwen2_computations = analyze_lora_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28, lora_r=64)
-    table = PrettyTable()
-    table.field_names = ["name", "TFLOPs"]
-    for k, v in qwen2_computations.items():
-        table.add_row([k, f'{v/TFLOPs: 0.4f}'])
-    print(table)
+    # table = PrettyTable()
+    # table.field_names = ["name", "TFLOPs"]
+    # for k, v in qwen2_computations.items():
+    #     table.add_row([k, f'{v/TFLOPs: 0.4f}'])
+    # print(table)
+    print(qwen2_computations['total']/TFLOPs)
+
+    batch_size, seq_len = 1, 1024
+    print(f'===== Qwen-2  7B lora finetuning********* batch_size: {batch_size}, seq_len: {seq_len} =====')
+    qwen2_computations = analyze_lora_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
+        head_num=28, kv_head=4, immediate_size=18944, layer_num=28, lora_r=64)
+    print(qwen2_computations['total']/TFLOPs)
+
+    batch_size, seq_len = 1, 2048
+    print(f'===== Qwen-2  7B lora finetuning********* batch_size: {batch_size}, seq_len: {seq_len} =====')
+    qwen2_computations = analyze_lora_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
+        head_num=28, kv_head=4, immediate_size=18944, layer_num=28, lora_r=64)
+    print(qwen2_computations['total']/TFLOPs)
+    
+    batch_size, seq_len = 1, 4096
+    print(f'===== Qwen-2  7B lora finetuning********* batch_size: {batch_size}, seq_len: {seq_len} =====')
+    qwen2_computations = analyze_lora_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=152064, hidden_size=3584, \
+        head_num=28, kv_head=4, immediate_size=18944, layer_num=28, lora_r=64)
+    print(qwen2_computations['total']/TFLOPs)
+    
+    
+
+
+
 

@@ -41,6 +41,9 @@ class MLP:
 class LoraMLP:
     # Lora的全连接层/矩阵乘
     def __init__(self, base_weight, lora_a, lora_b, scaling, dropout, base_bias=None):
+        base_weight.require_grad_(False)
+        if base_bias is not None:
+            base_bias.require_grad_(False)
         self.base_linear = MLP(base_weight, base_bias)
         self.lora_a = lora_a
         self.lora_b = lora_b
@@ -68,6 +71,8 @@ class LoraMLP:
     def backward(self, grad_output):
         grad_x_base, grad_weight_base, grad_bias_base = self.base_linear.backward(grad_output)
         
+        assert grad_weight_base is None and grad_bias_base is None, "Base weight and bias should not have gradients"
+        
         x, dropout_x, lora_branch_a = self.cache
         grad_lora_a, grad_lora_b = None, None
 
@@ -86,9 +91,6 @@ class LoraMLP:
         
         if self.lora_b.requires_grad:
             grad_lora_b = torch.matmul(grad_output.view(-1, h_z).T, lora_branch_a.view(-1, r_z)) * self.scaling
-
-        if self.base_linear.weight.requires_grad:
-            return grad_x_base, grad_weight_base, grad_bias_base, grad_lora_a, grad_lora_b
         
         return grad_x, grad_lora_a, grad_lora_b
 

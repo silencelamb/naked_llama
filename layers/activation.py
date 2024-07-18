@@ -13,7 +13,7 @@ def silu_backward(dy, x):
 class Softmax:
     def __init__(self, dim=-1):
         self.dim = dim
-        self.cacha = None
+        self.cache = None
     
     def forward(self, x, dtype=torch.float32):
         # softmax_rst = torch.exp(x) / torch.exp(x).sum(dim=-1, keepdim=True) 
