@@ -196,9 +196,41 @@ class LoraLlamaAttention(LlamaAttention):
         
     def backward(self, grad_output):
         # 反向传播
-        pass
+        hidden_states, query, key, value, cos, sin, position_ids = self.cache
+        grad_lora_a_q, grad_lora_b_q = None, None
+        grad_lora_a_k, grad_lora_b_k = None, None
+        grad_lora_a_v, grad_lora_b_v = None, None
+        grad_lora_a_o, grad_lora_b_o = None, None
+        batch_size, seq_len, hidden_size = hidden_states.shape
+        head_dim = query.shape[-1]
+        
+        grad_atten_o, grad_lora_a_o, grad_lora_b_o = self.o_proj.backward(grad_output)
+        grad_atten_o = grad_atten_o.view(batch_size, seq_len, self.num_heads, head_dim)
+        grad_atten_o = grad_atten_o.transpose(1, 2).contiguous()
+        
+        # 注意力计算 反向梯度
+        grad_query, grad_key, grad_value = self.scale_dot_product_attention.backward(grad_atten_o)
+        
+        # 重复多头 反向梯度
+        grad_key = repeat_kv_backward(grad_key, self.num_kv_groups)
+        grad_value = repeat_kv_backward(grad_value, self.num_kv_groups)
+        
+        # rope 反向梯度
+        grad_query, grad_key = apply_rotary_pos_emb_backward(grad_query, grad_key, query, key, cos, sin, position_ids)
+        
+        grad_query = grad_query.transpose(1, 2).reshape(batch_size * seq_len, head_dim * self.num_heads)
+        grad_key = grad_key.transpose(1, 2).reshape(batch_size * seq_len, head_dim * self.num_kv_heads)
+        grad_value = grad_value.transpose(1, 2).reshape(batch_size * seq_len, head_dim * self.num_kv_heads)
 
-        return grad_x, grad_w
+        #q_proj/k_proj/v_proj 线性变换的梯度
+        grad_x_q, grad_lora_a_q, grad_lora_b_q = self.q_proj.backward(grad_query)
+        grad_x_k, grad_lora_a_k, grad_lora_b_k = self.k_proj.backward(grad_key)
+        grad_x_v, grad_lora_a_v, grad_lora_b_v = self.v_proj.backward(grad_value)
+        
+        grad_x = grad_x_q + grad_x_k + grad_x_v
+        grad_x = grad_x.view(batch_size, seq_len, hidden_size)
+
+        return grad_x, grad_lora_a_q, grad_lora_b_q, grad_lora_a_k, grad_lora_b_k, grad_lora_a_v, grad_lora_b_v, grad_lora_a_o, grad_lora_b_o
     
 ### multi_head_attention's backward implementation ###
 def repeat_kv_backward(grad_h: torch.Tensor, n_rep: int) -> torch.Tensor:
@@ -270,6 +302,78 @@ def test_multi_head_attention_backward_manual_class():
     print(torch.testing.assert_close(d_bias_v_class, d_bias_v_manual))
     print(torch.testing.assert_close(d_bias_o_class, d_bias_o_manual))
 
+def test_LoraLlamaAttention_backward_manual_class():
+    # LoraLlamaAttention反向计算比较：手写的反向实现与PyTorch自带的自动求导
+    batch_size, seq_len, num_heads, head_dim, num_kv_heads, rank = 1, 6, 8, 8, 8, 4
+    dropout_rate = 0.1
+    scaling_factor = 0.5
+    x = torch.randn(batch_size, seq_len, num_heads*head_dim)
+
+    # bias is only for test, in real case, llama2 does not use bias, qwen2 uses bias.
+    w_q = nn.Parameter(torch.randn(num_heads*head_dim, num_heads*head_dim))
+    w_k = nn.Parameter(torch.randn(num_kv_heads*head_dim, num_heads*head_dim))
+    w_v = nn.Parameter(torch.randn(num_kv_heads*head_dim, num_heads*head_dim))
+    w_o = nn.Parameter(torch.randn(num_heads*head_dim, num_heads*head_dim))
+    
+    bias_q = nn.Parameter(torch.randn(num_heads*head_dim))
+    bias_k = nn.Parameter(torch.randn(num_kv_heads*head_dim))
+    bias_v = nn.Parameter(torch.randn(num_kv_heads*head_dim))
+    bias_o = nn.Parameter(torch.randn(num_heads*head_dim))
+
+    lora_a_q = torch.randn(rank, num_heads*head_dim, requires_grad=True)
+    lora_b_q = torch.randn(num_heads*head_dim, rank, requires_grad=True)
+    lora_a_k = torch.randn(rank, num_heads*head_dim, requires_grad=True)
+    lora_b_k = torch.randn(num_heads*head_dim, rank, requires_grad=True)
+    lora_a_v = torch.randn(rank, num_heads*head_dim, requires_grad=True)
+    lora_b_v = torch.randn(num_heads*head_dim, rank, requires_grad=True)
+    lora_a_o = torch.randn(rank, num_heads*head_dim, requires_grad=True)
+    lora_b_o = torch.randn(num_heads*head_dim, rank, requires_grad=True)
+
+    mask = get_attentioin_mask(start_pos=0, seq_length=seq_len, ref_tensor=x)
+    config = LlamaConfig(num_attention_heads=8, num_key_value_heads=8)
+    cos_cached, sin_cached = init_rope_embeddings(dim=head_dim, max_position_embeddings=seq_len)
+
+    x.requires_grad_(True)
+    w_q.requires_grad_(True)
+    w_k.requires_grad_(True)
+    w_v.requires_grad_(True)
+    w_o.requires_grad_(True)
+    bias_q.requires_grad_(True)
+    bias_k.requires_grad_(True)
+    bias_v.requires_grad_(True)
+    bias_o.requires_grad_(True)
+    
+    lora_multi_head_attention = LoraLlamaAttention(config, w_q, w_k, w_v, w_o, bias_q, bias_k, bias_v, bias_o)
+    lora_multi_head_attention.replace_with_lora(lora_a_q,lora_b_q,lora_a_k,lora_b_k,lora_a_v,\
+                                                lora_b_v,lora_a_o,lora_b_o, scaling_factor, dropout_rate)
+
+    output = lora_multi_head_attention.forward(x, mask)
+    # 定义输出的grad
+    grad_output = .1 * torch.randn_like(output)
+    output.backward(grad_output, retain_graph=True)
+    dx_class, dlora_a_q_class,dlora_b_q_class,dlora_a_k_class,dlora_b_k_class,\
+        dlora_a_v_class,dora_b_v_class,dlora_a_o_class,dlora_b_o_class = \
+        [_.grad.clone() for _ in [x, lora_a_q,lora_b_q,lora_a_k,lora_b_k,lora_a_v,\
+                                  lora_b_v,lora_a_o,lora_b_o]]   
+    dx_manual, dlora_a_q_manual,dlora_b_q_manual,dlora_a_k_manual,dlora_b_k_manual,\
+        dlora_a_v_manual,dora_b_v_manual,dlora_a_o_manual,dlora_b_o_manual = lora_multi_head_attention.backward(grad_output)
+    auto_grads = [dx_class, dlora_a_q_class,dlora_b_q_class,dlora_a_k_class,dlora_b_k_class,\
+        dlora_a_v_class,dora_b_v_class,dlora_a_o_class,dlora_b_o_class]
+    manual_grads = [dx_manual, dlora_a_q_manual,dlora_b_q_manual,dlora_a_k_manual,dlora_b_k_manual,\
+        dlora_a_v_manual,dora_b_v_manual,dlora_a_o_manual,dlora_b_o_manual]
+    gradient_names = ["x","lora_a_q","lora_b_q","lora_a_k","lora_b_k","lora_a_v","lora_b_v",\
+                      "lora_a_o","lora_b_o"]
+        # 比较反向传播的梯度
+    for name, auto_grad, manual_grad in zip(gradient_names, auto_grads, manual_grads):
+        try:
+            # torch.testing.assert_close(auto_grad, manual_grad, rtol=5e-5, atol=5e-5)
+            torch.testing.assert_close(auto_grad, manual_grad)
+
+            print(f"Gradient match for {name}: PASSED")
+        except AssertionError as e:
+            print(f"Gradient match for {name}: FAILED")
+            print(e)
+
 if __name__ == '__main__':
     torch.manual_seed(65536)
     torch.set_printoptions(linewidth=200)         # 这样打印不会存在折叠的问题
@@ -289,3 +393,4 @@ if __name__ == '__main__':
     
     # 多头注意力反向梯度测试
     test_multi_head_attention_backward_manual_class()
+    test_LoraLlamaAttention_backward_manual_class()
