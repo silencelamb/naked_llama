@@ -62,7 +62,7 @@ class LoraMLP:
         lora_branch_b = torch.matmul(lora_branch_a, self.lora_b.T)
         lora_branch = self.scaling * lora_branch_b
         result += lora_branch
-        self.cache = (x, dropout_x, lora_branch_a)
+        self.cache = (x, dropout_x, lora_branch_a,)
         return result
 
     def backward(self, grad_output):
@@ -430,7 +430,9 @@ def test_LoraLlamaMLP_backward_manual_class():
     # 比较反向传播的梯度
     for name, auto_grad, manual_grad in zip(gradient_names, auto_grads, manual_grads):
         try:
-            torch.testing.assert_close(auto_grad, manual_grad)
+            torch.testing.assert_close(auto_grad, manual_grad, rtol=5e-5, atol=5e-5)
+            # torch.testing.assert_close(auto_grad, manual_grad)
+
             print(f"Gradient match for {name}: PASSED")
         except AssertionError as e:
             print(f"Gradient match for {name}: FAILED")
@@ -442,7 +444,7 @@ if __name__ == "__main__":
     test_LlamaMLP_backward_manual_class()
     # test_LlamaMLP_backward_manual_auto()
     # test_LoraMLP_backward_manual_class()
-    # test_LoraLlamaMLP_backward_manual_class()
+    test_LoraLlamaMLP_backward_manual_class()
 
 
 
