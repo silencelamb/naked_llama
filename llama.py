@@ -173,6 +173,15 @@ class LoraLlamaModel(LlamaModel):
             transformer_block.replace_with_lora(q_lora_a, q_lora_b, k_lora_a, k_lora_b, v_lora_a, v_lora_b, o_lora_a, \
                 o_lora_b, up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout)
     
+    def eval(self):
+        for i, transformer_block in enumerate(self.transformer_blocks):
+            transformer_block.eval()
+    
+    def train(self):
+        for i, transformer_block in enumerate(self.transformer_blocks):
+            transformer_block.train()
+        
+    
     def backward(self, grad_output):
         pass
 

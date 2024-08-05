@@ -41,14 +41,15 @@ class MLP:
 class LoraMLP:
     # Lora的全连接层/矩阵乘
     def __init__(self, base_weight, lora_a, lora_b, scaling, dropout, base_bias=None):
-        base_weight.require_grad_(False)
+        base_weight.requires_grad_(False)
         if base_bias is not None:
-            base_bias.require_grad_(False)
+            base_bias.requires_grad_(False)
         self.base_linear = MLP(base_weight, base_bias)
         self.lora_a = lora_a
         self.lora_b = lora_b
         self.scaling = scaling
         self.dropout_rate = dropout
+        # https://pytorch.org/docs/stable/generated/torch.nn.Dropout.html
         self.dropout = nn.Dropout(p=self.dropout_rate)
         self.cache = None
     
@@ -143,9 +144,6 @@ class LlamaMLP:
 class LoraLlamaMLP(LlamaMLP):
     
     def replace_with_lora(self, up_lora_a, up_lora_b, gate_lora_a, gate_lora_b, down_lora_a, down_lora_b, scaling, dropout):
-        self.FFN_up.weight.requires_grad_(False)
-        self.FFN_gate.weight.requires_grad_(False)
-        self.FFN_down.weight.requires_grad_(False)
         self.FFN_up = LoraMLP(self.FFN_up.weight, up_lora_a, up_lora_b, scaling, dropout, self.FFN_up.bias)
         self.FFN_gate = LoraMLP(self.FFN_gate.weight, gate_lora_a, gate_lora_b, scaling, dropout, self.FFN_gate.bias)
         self.FFN_down = LoraMLP(self.FFN_down.weight, down_lora_a, down_lora_b, scaling, dropout, self.FFN_down.bias)

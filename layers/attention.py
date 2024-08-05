@@ -169,14 +169,6 @@ class LlamaAttention():
 class LoraLlamaAttention(LlamaAttention):
 
     def replace_with_lora(self, q_lora_a, q_lora_b, k_lora_a, k_lora_b, v_lora_a, v_lora_b, o_lora_a, o_lora_b, scaling, dropout):
-        self.q_proj.weight.requires_grad_(False)
-        self.k_proj.weight.requires_grad_(False)
-        self.v_proj.weight.requires_grad_(False)
-        self.o_proj.weight.requires_grad_(False)
-        if self.q_proj.bias is not None: self.q_proj.bias.requires_grad_(False)
-        if self.k_proj.bias is not None: self.k_proj.bias.requires_grad_(False)
-        if self.v_proj.bias is not None: self.v_proj.bias.requires_grad_(False)
-        
         self.q_proj = LoraMLP(self.q_proj.weight, q_lora_a, q_lora_b, scaling, dropout, self.q_proj.bias)
         self.k_proj = LoraMLP(self.k_proj.weight, k_lora_a, k_lora_b, scaling, dropout, self.k_proj.bias)
         self.v_proj = LoraMLP(self.v_proj.weight, v_lora_a, v_lora_b, scaling, dropout, self.v_proj.bias)
