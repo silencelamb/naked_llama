@@ -23,10 +23,17 @@ def p2p_communication(rank, world_size):
         for target in range(1, world_size):
             dist.send(tensor, dst=target)
             # dist.recv(tensor, src=target)
-
-        # 同步所有进程，确保warmup完成
-        dist.barrier()
+    else:
+        tensor = torch.zeros(1, device=device)
+        # Warmup
+        dist.recv(tensor, src=0)
+        # dist.send(tensor, dst=0)
         
+    # 同步所有进程，确保warmup完成
+    dist.barrier()
+    torch.cuda.synchronize(device)
+    
+    if rank == 0:
         # GPU0 发送张量到其他 GPU，并测量时间
         for target in range(1, world_size):
             tensor = torch.ones(1, device=device) * target  # 一个较大的张量，用于通信测试
@@ -39,15 +46,6 @@ def p2p_communication(rank, world_size):
             print(f'P2P communication from GPU0 to GPU{target} took {elapsed_time*1000:.3f} ms')
     else:
         tensor = torch.zeros(1, device=device)
-
-        # Warmup
-        dist.recv(tensor, src=0)
-        # dist.send(tensor, dst=0)
-        
-        # 同步所有进程，确保warmup完成
-        dist.barrier()
-
-
         # 其他 GPU 从 GPU0 接收张量
         dist.recv(tensor, src=0)
         torch.cuda.synchronize(device)
@@ -60,4 +58,8 @@ def main():
     mp.spawn(p2p_communication, args=(world_size,), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
+    # CUDA_VISIBLE_DEVICES=0,3,5,6 python nccl_p2p_latency_test.py
+    # 可能 /dev/shm 不够用报错，默认是64M，
+    # 需要重新启动docker加上选项：  --shm-size 8g 
+    # 40us 量级
     main()
