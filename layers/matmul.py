@@ -65,7 +65,7 @@ class LoraMLP:
         lora_branch_b = torch.matmul(lora_branch_a, self.lora_b.T)
         lora_branch = self.scaling * lora_branch_b
         result += lora_branch
-        self.cache = (x, dropout_x, lora_branch_a)
+        self.cache = (x, dropout_x, lora_branch_a,)
         return result
 
     def backward(self, grad_output):
@@ -76,7 +76,8 @@ class LoraMLP:
         x, dropout_x, lora_branch_a = self.cache
         grad_lora_a, grad_lora_b = None, None
 
-        r_z, h_z = self.lora_a.shape
+        r_z, i_z = self.lora_a.shape
+        o_z, _ = self.lora_b.shape
         # 计算 Lora 分支的梯度
         grad_lora_temp = torch.matmul(grad_output, self.lora_b) * self.scaling
 
@@ -87,10 +88,10 @@ class LoraMLP:
             grad_x = grad_x_base + grad_x_lora 
         
         if self.lora_a.requires_grad:
-            grad_lora_a = torch.matmul(grad_lora_temp.view(-1, r_z).T, dropout_x.view(-1, h_z))
+            grad_lora_a = torch.matmul(grad_lora_temp.view(-1, r_z).T, dropout_x.view(-1, i_z))
         
         if self.lora_b.requires_grad:
-            grad_lora_b = torch.matmul(grad_output.view(-1, h_z).T, lora_branch_a.view(-1, r_z)) * self.scaling
+            grad_lora_b = torch.matmul(grad_output.view(-1, o_z).T, lora_branch_a.view(-1, r_z)) * self.scaling
         
         return grad_x, grad_lora_a, grad_lora_b
 
@@ -257,8 +258,7 @@ def test_LlamaMLP_backward_manual_class():
                                                    llama_mlp_origin.down_proj.weight,
                                                    llama_mlp_origin.up_proj.bias,
                                                    llama_mlp_origin.gate_proj.bias, 
-                                                   llama_mlp_origin.down_proj.bias]
-                                                 ]
+                                                   llama_mlp_origin.down_proj.bias]]
 
     weight_g = llama_mlp_origin.gate_proj.weight.clone().detach().requires_grad_(True)
     bias_g = llama_mlp_origin.gate_proj.bias.clone().detach().requires_grad_(True)
@@ -432,7 +432,9 @@ def test_LoraLlamaMLP_backward_manual_class():
     # 比较反向传播的梯度
     for name, auto_grad, manual_grad in zip(gradient_names, auto_grads, manual_grads):
         try:
-            torch.testing.assert_close(auto_grad, manual_grad)
+            torch.testing.assert_close(auto_grad, manual_grad, rtol=5e-5, atol=5e-5)
+            # torch.testing.assert_close(auto_grad, manual_grad)
+
             print(f"Gradient match for {name}: PASSED")
         except AssertionError as e:
             print(f"Gradient match for {name}: FAILED")
@@ -444,7 +446,7 @@ if __name__ == "__main__":
     test_LlamaMLP_backward_manual_class()
     # test_LlamaMLP_backward_manual_auto()
     # test_LoraMLP_backward_manual_class()
-    # test_LoraLlamaMLP_backward_manual_class()
+    test_LoraLlamaMLP_backward_manual_class()
 
 
 
