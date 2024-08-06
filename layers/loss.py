@@ -11,7 +11,9 @@ class CrossEntropy:
     def forward(self, input, target):
         """
         Args:
-            input: Tensor of shape (N, C) where N is the batch size and C is the number of classes.
+            input: Tensor of shape (N, C)
+                    N is the batch size
+                    C is the number of classes.
             target: Tensor of shape (N,) where each value is the class index (0 <= target[i] < C) for each example in the batch.
 
         Returns:
@@ -22,8 +24,12 @@ class CrossEntropy:
         softmax = F.softmax(input, dim=-1)
 
         # Convert target to one-hot encoding
+        # e.g.: 
+        #   N = 2, C = 4
+        #   target = [2, 1] -> target_one_hot = [[0, 0, 1, 0], [0, 1, 0, 0]]
         target_one_hot = torch.zeros_like(input)
         target_one_hot.scatter_(1, target.unsqueeze(1), 1)
+        
 
         self.cache = softmax
         
