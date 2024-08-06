@@ -255,9 +255,6 @@ def test_llama_backward_manual_class():
     # naked_llama 前向
     llama2 = LlamaModel(config)
     manual_logits = llama2.forward(inputs) 
-
-    # grad_output = 0.1 * torch.randn_like(logits)
-    # hf_logits.backward(grad_output, retain_graph=True)
     
     # 交叉熵计算loss
     official_loss = F.cross_entropy(hf_logits.view(-1, hf_logits.size(-1)), targets.view(-1), reduction='mean')
