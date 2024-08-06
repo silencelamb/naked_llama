@@ -6,6 +6,7 @@ from layers.transformer_block import LlamaTransformerBlock, LoraLlamaTransformer
 from layers.rms_norm import LlamaRMSNorm
 from layers.matmul import MLP 
 from layers.rope import init_rope_embeddings
+from layers.loss import CrossEntropy
 from utils import npy_to_tensor, load_llama_config, get_attentioin_mask
 from configuration_llama import LlamaConfig
 import torch.nn.functional as F
@@ -183,7 +184,41 @@ class LoraLlamaModel(LlamaModel):
         
     
     def backward(self, grad_output):
-        pass
+        """
+        lora_llama2反向
+        """
+        lora_grads = {}
+        
+        # 反向传播 lm_head 
+        grad_hs, _, _ = self.lm_head.backward(grad_output)
+
+        # 反向传播 RMSNorm
+        grad_hs, _ = self.output_rmsnorm.backward(grad_hs)
+        
+        # 反向传播 Transformer blocks
+        for layer_id in reversed(range(len(self.transformer_blocks))):
+            grad_output = self.transformer_blocks[layer_id].backward(grad_hs)
+            grad_hs = grad_output[0]
+
+            # 存储每个 transformer block 的梯度
+            
+            lora_grads[f'block_{layer_id}_self_attn.q_proj.lora_A_grad'] = grad_output[1].clone()
+            lora_grads[f'block_{layer_id}_self_attn.q_proj.lora_B_grad'] = grad_output[2].clone()
+            lora_grads[f'block_{layer_id}_self_attn.k_proj.lora_A_grad'] = grad_output[3].clone()
+            lora_grads[f'block_{layer_id}_self_attn.k_proj.lora_B_grad'] = grad_output[4].clone()
+            lora_grads[f'block_{layer_id}_self_attn.v_proj.lora_A_grad'] = grad_output[5].clone()
+            lora_grads[f'block_{layer_id}_self_attn.v_proj.lora_B_grad'] = grad_output[6].clone()
+            lora_grads[f'block_{layer_id}_self_attn.o_proj.lora_A_grad'] = grad_output[7].clone()
+            lora_grads[f'block_{layer_id}_self_attn.o_proj.lora_B_grad'] = grad_output[8].clone()
+
+            lora_grads[f'block_{layer_id}_mlp.up_proj.lora_A_grad'] = grad_output[9].clone()
+            lora_grads[f'block_{layer_id}_mlp.up_proj.lora_B_grad'] = grad_output[10].clone()
+            lora_grads[f'block_{layer_id}_mlp.gate_proj.lora_A_grad'] = grad_output[11].clone()
+            lora_grads[f'block_{layer_id}_mlp.gate_proj.lora_B_grad'] = grad_output[12].clone()
+            lora_grads[f'block_{layer_id}_mlp.down_proj.lora_A_grad'] = grad_output[13].clone()
+            lora_grads[f'block_{layer_id}_mlp.down_proj.lora_B_grad'] = grad_output[14].clone()
+        
+        return lora_grads
 
 
 def test_llama_backward_manual_class():
@@ -219,14 +254,14 @@ def test_llama_backward_manual_class():
 
     # naked_llama 前向
     llama2 = LlamaModel(config)
-    logits = llama2.forward(inputs) 
+    manual_logits = llama2.forward(inputs) 
 
-    grad_output = 0.1 * torch.randn_like(logits)
-    hf_logits.backward(grad_output, retain_graph=True)
+    # grad_output = 0.1 * torch.randn_like(logits)
+    # hf_logits.backward(grad_output, retain_graph=True)
     
     # 交叉熵计算loss
-    # loss = F.cross_entropy(hf_logits.view(-1, hf_logits.size(-1)), targets.view(-1))
-    # loss.backward(retain_graph=True)
+    official_loss = F.cross_entropy(hf_logits.view(-1, hf_logits.size(-1)), targets.view(-1), reduction='mean')
+    official_loss.backward()
 
     # 保存hf_model自动求导梯度
     hf_grads = {}
@@ -255,11 +290,9 @@ def test_llama_backward_manual_class():
     
     hf_grads['embedding_weight_grad'] = model.model.embed_tokens.weight.grad.clone()
 
-    # 手动实现交叉熵损失的反向计算
-    # softmax_logits = torch.softmax(logits, dim=-1)  # shape: (B, S, V)
-    # targets_one_hot = torch.zeros_like(logits)
-    # targets_one_hot.scatter_(-1, targets.unsqueeze(-1), 1)  
-    # grad_output = softmax_logits - targets_one_hot  # shape: (B, S, V)
+    cross_entropy_manual = CrossEntropy(reduction='mean')
+    manual_loss = cross_entropy_manual.forward(manual_logits.view(-1, manual_logits.size(-1)), targets.view(-1))
+    grad_output = cross_entropy_manual.backward(targets.view(-1), manual_loss)
     manual_grads = llama2.backward(grad_output)
 
     for key in hf_grads:
@@ -269,7 +302,8 @@ def test_llama_backward_manual_class():
             print(f'Missing grad for {key} in manual backward.')
             continue
         try:
-            torch.testing.assert_close(hf_grad, hw_grad, rtol=5e-4, atol=5e-4)
+            torch.testing.assert_close(hf_grad, hw_grad)
+
             print(f'{key}: grads match.')
         except AssertionError as e:
             print(f'{key}: grads do not match. {e}')
