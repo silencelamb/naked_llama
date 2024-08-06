@@ -5,7 +5,11 @@ import torch.multiprocessing as mp
 import time
 
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
+    # os.environ['MASTER_ADDR'] = 'localhost'
+    # docker 内，若是bridge 网络，使用容器的 ip，而不是 localhost
+    # 使用localhost，会报错： (errno: 101 - Network is unreachable)
+    # os.environ['MASTER_ADDR'] = '172.17.0.4'
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
