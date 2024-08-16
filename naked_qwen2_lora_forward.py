@@ -34,9 +34,9 @@ if __name__ == '__main__':
             'weights_dir': 'weights/qwen2_7b/'
         },
         "qwen2_7b_lora": {
-            'tokenizer': "Qwen/Qwen2-7B",
-            'hf_model': "Qwen/Qwen2-7B",
-            'config_path': 'configs/qwen2_7b_config.json',
+            'tokenizer': "Qwen/Qwen2-7B-Instruct",
+            'hf_model': "Qwen/Qwen2-7B-Instruct",
+            'config_path': 'configs/qwen2_7b_instruct_config.json',
             'weights_dir': 'weights/qwen2_7b_lora/'
         },
     }

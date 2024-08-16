@@ -21,8 +21,8 @@ model_configs = {
         'weights_dir': 'weights/qwen2_7b/'
     },
     'qwen2_7b_lora': {
-        'hf_model': "Qwen/Qwen2-7B",
-        'tokenizer': "Qwen/Qwen2-7B",
+        'hf_model': "Qwen/Qwen2-7B-Instruct",
+        'tokenizer': "Qwen/Qwen2-7B-Instruct",
         'weights_dir': 'weights/qwen2_7b_lora/'
     },
 }
