@@ -1,7 +1,7 @@
 from hw_params import GB
 DTYPES_BYTES = {'float32': 4,  'float16': 2, 'bfloat16': 2, 'int8': 1}
 
-def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immediate_size, layer_num, vocab_size, is_print=True):
+def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immediate_size, layer_num, vocab_size, is_print=True, use_flash_attention=False):
     '''
     Analyze the activations memory of llama2/qwen2 model.
     Reference:
@@ -30,6 +30,8 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
     v_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * kv_dim
     o_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     softmax_output = DTYPES_BYTES['float32'] * batch_size * head_num * seq_len * seq_len
+    if use_flash_attention:
+        softmax_output = DTYPES_BYTES['float32'] * batch_size * head_num * seq_len * head_num
     norm_input = DTYPES_BYTES['float32'] * batch_size * seq_len * hidden_size * 2  # 2个 RMSNorm
     mlp_up_input = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     mlp_up_output = DTYPES_BYTES['float16'] * batch_size * seq_len * immediate_size
