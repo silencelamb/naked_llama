@@ -40,7 +40,7 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
     
     last_norm = DTYPES_BYTES['float32'] * batch_size * seq_len * hidden_size
     lm_head_input = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
-    last_softmax = DTYPES_BYTES['float16'] * batch_size * seq_len * vocab_size
+    last_softmax = DTYPES_BYTES['float32'] * batch_size * seq_len * vocab_size
     total = activation * layer_num + last_norm + lm_head_input + last_softmax
     
     if is_print:
