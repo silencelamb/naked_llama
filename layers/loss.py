@@ -85,7 +85,7 @@ class CrossEntropy:
 
 def test_cross_entropy_manual_class(reduction='mean'):
     # Example usage without ignore_index
-    print("=====================Testing without ignore_index:")
+    print(f"=====================Testing ignore_index case: No, reduction: {reduction}=====================")
     input = torch.tensor([[1.0, 2.0, 3.0], [1.0, 3.0, 2.0]], requires_grad=True)  # Example input tensor (logits)
     target = torch.tensor([2, 1])  # Example target tensor (class indices)
 
@@ -108,7 +108,7 @@ def test_cross_entropy_manual_class(reduction='mean'):
     print("Gradient comparison:", torch.testing.assert_close(grad_input, official_grad_input))
 
     # Example usage with ignore_index
-    print("=====================Testing with ignore_index:")
+    print(f"=====================Testing ignore_index case: Yes, reduction: {reduction}=====================")
     input = torch.tensor([[1.0, 2.0, 3.0], [1.0, 3.0, 2.0], [4.0, 5.0, 6.0]], requires_grad=True)  # Example input tensor (logits)
     target = torch.tensor([2, -100, 1])  # Example target tensor with ignore_index (-100)
 
