@@ -24,7 +24,15 @@ class CrossEntropy:
 
         # Apply softmax to get probabilities
         softmax = F.softmax(input, dim=-1)
-
+        
+        # Convert target to one-hot encoding
+        # e.g.: 
+        #   N = 3, C = 4
+        #   target = [2, 1, -100] -> 
+        #   target_one_hot = [[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 0]]
+        target_one_hot = torch.zeros_like(input)
+        target_one_hot.scatter_(1, target.unsqueeze(1), 1)
+        
         # Create mask for ignore_index
         valid_mask = (target != self.ignore_index)
         
@@ -32,22 +40,18 @@ class CrossEntropy:
         target_one_hot = torch.zeros_like(input)
         valid_target = target[valid_mask]  # Only consider valid targets
         target_one_hot[valid_mask] = torch.zeros_like(input[valid_mask])  # Set ignored rows to zeros
-        target_one_hot[valid_mask].scatter_(1, valid_target.unsqueeze(1), 1)
+        target_one_hot[valid_mask] = target_one_hot[valid_mask].scatter_(1, valid_target.unsqueeze(1), 1)
 
         self.cache = softmax
-
+        
         # Calculate log of softmax
         log_softmax = torch.log(softmax)
 
-        # Calculate cross entropy loss, ignoring ignored indices
-        loss = -torch.sum(target_one_hot * log_softmax, dim=-1)  # Shape: (N,)
-        loss = loss[valid_mask]  # Filter out losses for ignored indices
-
+        # Calculate cross entropy loss
+        loss = -torch.sum(target_one_hot * log_softmax)
         if self.reduction == 'mean':
-            loss = torch.mean(loss)
-        elif self.reduction == 'sum':
-            loss = torch.sum(loss)
-
+            loss = loss / valid_mask.sum()  # Only scale by the number of valid samples
+            
         return loss
 
     def backward(self, target, loss):
