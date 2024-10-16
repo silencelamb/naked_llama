@@ -52,7 +52,7 @@ class CrossEntropy:
             weight = self.weight.view(1, -1)  # Reshape weight to (1, C)
             target_one_hot = target_one_hot * weight
         else:
-            weight = torch.ones_like(input)  # Default weight is 1
+            weight = torch.ones_like(target)  # Default weight is 1
 
         # Calculate cross entropy loss
         loss = -torch.sum(target_one_hot * log_softmax)
@@ -86,7 +86,7 @@ class CrossEntropy:
             weight = self.weight.view(1, -1)  # Reshape weight to (1, C)
             target_one_hot = target_one_hot * weight
         else:
-            weight = torch.ones_like(input)  # Default weight is 1
+            weight = torch.ones_like(target)  # Default weight is 1
             
         # Gradient of the loss w.r.t input, ignoring ignored indices
         grad_input = softmax.clone()
@@ -104,8 +104,9 @@ def test_cross_entropy_manual_class(reduction='mean'):
     print(f"=====================Testing ignore_index case: No, reduction: {reduction}=====================")
     input = torch.tensor([[1.0, 2.0, 3.0], [1.0, 3.0, 2.0]], requires_grad=True)  # Example input tensor (logits)
     target = torch.tensor([2, 1])  # Example target tensor (class indices)
+    weight = torch.FloatTensor([0.5, 1.0, 2.0])  # Example class weights
 
-    cross_entropy_manual = CrossEntropy(reduction=reduction)
+    cross_entropy_manual = CrossEntropy(reduction=reduction, weight=weight)
     # Forward pass using custom implementation
     loss = cross_entropy_manual.forward(input, target)
 
@@ -113,7 +114,7 @@ def test_cross_entropy_manual_class(reduction='mean'):
     grad_input = cross_entropy_manual.backward(target, loss)
 
     # Forward pass using PyTorch's built-in function
-    official_loss = F.cross_entropy(input, target, reduction=reduction)
+    official_loss = F.cross_entropy(input, target, reduction=reduction, weight=weight)
 
     # Backward pass using PyTorch's built-in function
     official_loss.backward()
@@ -127,7 +128,6 @@ def test_cross_entropy_manual_class(reduction='mean'):
     print(f"=====================Testing ignore_index case: Yes, reduction: {reduction}=====================")
     input = torch.tensor([[1.0, 2.0, 3.0], [1.0, 3.0, 2.0], [4.0, 5.0, 6.0]], requires_grad=True)  # Example input tensor (logits)
     target = torch.tensor([2, -100, 1])  # Example target tensor with ignore_index (-100)
-    weight = torch.FloatTensor([0.5, 1.0, 2.0])  # Example class weights
 
     cross_entropy_manual = CrossEntropy(reduction=reduction, ignore_index=-100, weight=weight)
     # Forward pass using custom implementation
