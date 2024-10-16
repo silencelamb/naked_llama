@@ -109,7 +109,7 @@ def test_cross_entropy_manual_class(reduction='mean'):
     grad_input = cross_entropy_manual.backward(target, loss)
 
     # Forward pass using PyTorch's built-in function
-    official_loss = nn.CrossEntropyLoss(input, target, reduction=reduction)
+    official_loss = F.cross_entropy(input, target, reduction=reduction)
 
     # Backward pass using PyTorch's built-in function
     official_loss.backward()
@@ -133,7 +133,7 @@ def test_cross_entropy_manual_class(reduction='mean'):
     grad_input = cross_entropy_manual.backward(target, loss)
 
     # Forward pass using PyTorch's built-in function
-    official_loss = nn.CrossEntropyLoss(input, target, reduction=reduction, ignore_index=-100, weight=weight)
+    official_loss = F.cross_entropy(input, target, reduction=reduction, ignore_index=-100, weight=weight)
 
     # Backward pass using PyTorch's built-in function
     official_loss.backward()
