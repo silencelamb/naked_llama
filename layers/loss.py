@@ -72,7 +72,7 @@ class CrossEntropy:
         # Convert target to one-hot encoding, ignoring ignored indices
         target_one_hot = torch.zeros_like(softmax)
         valid_target = target[valid_mask]
-        target_one_hot[valid_mask].scatter_(1, valid_target.unsqueeze(1), 1)
+        target_one_hot[valid_mask] = target_one_hot[valid_mask].scatter_(1, valid_target.unsqueeze(1), 1)
 
         # Gradient of the loss w.r.t input, ignoring ignored indices
         grad_input = softmax.clone()
