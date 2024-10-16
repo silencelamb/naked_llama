@@ -99,7 +99,7 @@ def test_cross_entropy_manual_class(reduction='mean'):
     print(f"=====================Testing ignore_index case: No, reduction: {reduction}=====================")
     input = torch.tensor([[1.0, 2.0, 3.0], [1.0, 3.0, 2.0]], requires_grad=True)  # Example input tensor (logits)
     target = torch.tensor([2, 1])  # Example target tensor (class indices)
-    weight = torch.tensor([0.5, 1.0, 2.0])  # Example class weights
+    weight = torch.FloatTensor([0.5, 1.0, 2.0])  # Example class weights
 
     cross_entropy_manual = CrossEntropy(reduction=reduction, weight=weight)
     # Forward pass using custom implementation
