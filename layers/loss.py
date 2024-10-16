@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 class CrossEntropy:
     # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
-   def __init__(self, reduction='mean', ignore_index=-100, weight=None):
+    def __init__(self, reduction='mean', ignore_index=-100, weight=None):
         self.reduction = reduction
         self.ignore_index = ignore_index
         self.cache = None
