@@ -30,8 +30,6 @@ class CrossEntropy:
         #   N = 3, C = 4
         #   target = [2, 1, -100] -> 
         #   target_one_hot = [[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 0]]
-        target_one_hot = torch.zeros_like(input)
-        target_one_hot.scatter_(1, target.unsqueeze(1), 1)
         
         # Create mask for ignore_index
         valid_mask = (target != self.ignore_index)
