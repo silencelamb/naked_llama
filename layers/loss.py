@@ -47,17 +47,17 @@ class CrossEntropy:
         # Calculate log of softmax
         log_softmax = torch.log(softmax)
 
-        # If weight is provided, (and reduction is not mean!!!)  apply it to the target one-hot encoding
-        if self.reduction == 'mean' and self.weight is not None:
-            weight = self.weight.view(1, -1)  # Reshape weight to (1, C)
-            target_one_hot = target_one_hot * weight
-        else:
-            weight = torch.ones_like(target)  # Default weight is 1
+        if self.weight is None:
+            self.weight = torch.ones_like(target)  # Default weight is 1
+
+        # apply weight to the target one-hot encoding
+        if self.reduction == 'mean':
+            target_one_hot = target_one_hot * self.weight
 
         # Calculate cross entropy loss
         loss = -torch.sum(target_one_hot * log_softmax)
         if self.reduction == 'mean':
-            loss = loss / weight[valid_mask].sum()  # Only scale by the number of valid samples
+            loss = loss / self.weight[valid_mask].sum()  # Only scale by the number of valid samples
             
         return loss
 
@@ -81,12 +81,13 @@ class CrossEntropy:
         valid_target = target[valid_mask]
         target_one_hot[valid_mask] = target_one_hot[valid_mask].scatter_(1, valid_target.unsqueeze(1), 1)
 
-        # If weight is provided, (and reduction is not mean!!!)  apply it to the target one-hot encoding
-        if self.reduction == 'mean' and self.weight is not None:
-            weight = self.weight.view(1, -1)  # Reshape weight to (1, C)
-            target_one_hot = target_one_hot * weight
-        else:
-            weight = torch.ones_like(target)  # Default weight is 1
+        if self.weight is None:
+            self.weight = torch.ones_like(target)  # Default weight is 1
+
+        # apply weight to the target one-hot encoding
+        if self.reduction == 'mean':
+            target_one_hot = target_one_hot * self.weight
+            
             
         # Gradient of the loss w.r.t input, ignoring ignored indices
         grad_input = softmax.clone()
@@ -94,7 +95,7 @@ class CrossEntropy:
         grad_input[~valid_mask] = 0  # Set gradient to zero for ignored indices
 
         if self.reduction == 'mean':
-            grad_input = grad_input / weight[valid_mask].sum()  # Only scale by the number of valid samples
+            grad_input = grad_input / self.weight[valid_mask].sum()  # Only scale by the number of valid samples
 
         return grad_input
 
