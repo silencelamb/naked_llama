@@ -28,6 +28,14 @@ class ScaledDotProductAttention():
         self.softmax = Softmax()
     
     def forward(self, query, key, value, attention_mask):
+        """
+        query: (batch_size, num_heads, seq_len, head_dim)
+        key:   (batch_size, num_heads, seq_len, head_dim)
+        value: (batch_size, num_heads, seq_len, head_dim)
+        
+        log_sum_exp: (batch_size, num_heads, seq_len)
+        output: (batch_size, num_heads, seq_len, head_dim)
+        """
         head_dim = query.size(-1)  # 获取 头的维度
         # transpose key
         transposed_key = key.transpose(2, 3)
@@ -40,6 +48,10 @@ class ScaledDotProductAttention():
         
         if attention_mask is not None:
             scaled_scores = scaled_scores + attention_mask
+    
+        # 计算log sum exp, flash-attention中的return结果tensor
+        log_sum_exp = torch.logsumexp(scaled_scores, dim=-1, keepdim=True)
+        
         # softmax
         attention_weights = self.softmax.forward(scaled_scores, dtype=torch.float32)
         # weighted sum
@@ -48,6 +60,16 @@ class ScaledDotProductAttention():
         return output
 
     def backward(self, grad_output):
+        """
+        query: (batch_size, num_heads, seq_len, head_dim)
+        key:   (batch_size, num_heads, seq_len, head_dim)
+        value: (batch_size, num_heads, seq_len, head_dim)
+        log_sum_exp: (batch_size, num_heads, seq_len)
+        
+        grad_query: (batch_size, num_heads, seq_len, head_dim)
+        grad_key:   (batch_size, num_heads, seq_len, head_dim)
+        grad_value: (batch_size, num_heads, seq_len, head_dim)
+        """
         query, key, value, attention_weights = self.cache
         head_dim = query.size(-1)  
     
@@ -68,7 +90,6 @@ class ScaledDotProductAttention():
         if value.requires_grad:
             # value梯度
             grad_value = torch.matmul(attention_weights.transpose(-2, -1), grad_output)
-    
         return grad_query, grad_key, grad_value
 
 class LlamaAttention():
