@@ -50,7 +50,7 @@ class ScaledDotProductAttention():
             scaled_scores = scaled_scores + attention_mask
     
         # 计算log sum exp, flash-attention中的return结果tensor
-        log_sum_exp = torch.logsumexp(scaled_scores, dim=-1, keepdim=True)
+        log_sum_exp = torch.logsumexp(scaled_scores, dim=-1, keepdim=True, dtype=torch.float32)
         
         # softmax
         attention_weights = self.softmax.forward(scaled_scores, dtype=torch.float32)
