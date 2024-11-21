@@ -2,11 +2,14 @@ from transformers import LlamaConfig, AutoModelForCausalLM, LlamaForCausalLM
 import torch
 
 # 加载 Qwen2 模型
-qwen_model = AutoModelForCausalLM.from_pretrained(
-    "Qwen/Qwen2-7B-Instruct",
-    torch_dtype="auto",
-    device_map="auto"
-)
+print("Loading Qwen2 weights...")
+with torch.no_grad():
+    qwen_model = AutoModelForCausalLM.from_pretrained(
+        "Qwen/Qwen2-7B-Instruct",
+        torch_dtype="auto",
+        device_map="auto"
+    )
+print("Loaded Qwen2 weights!")
 
 # 创建 LLaMA2 格式的配置
 llama_config = LlamaConfig(
@@ -26,13 +29,16 @@ llama_config = LlamaConfig(
 )
 
 # 转换模型权重
-llama_model = LlamaForCausalLM(llama_config).to(dtype=torch.bfloat16).to(device=qwen_model.device)
+print("Initializing LlaMA using config from Qwen2...")
+with torch.no_grad():
+    llama_model = LlamaForCausalLM(llama_config).to(dtype=torch.bfloat16).to(device=qwen_model.device)
 
 # 复制生成配置，这个挺重要的，因为生成配置会影响到模型的输出对齐
 # 关键配置比如是否sample，是否repetition_penalty等
 llama_model.generation_config = qwen_model.generation_config
 
 # 复制权重(这里需要根据具体层的对应关系进行修改)
+print("Start converting Qwen2 weights to LlaMA...")
 for name, param in qwen_model.named_parameters():
     if name in llama_model.state_dict():
         llama_model.state_dict()[name].copy_(param)
@@ -45,6 +51,8 @@ for name, param in llama_model.named_parameters():
     if 'self_attn.o_proj.bias' in name:
         print(f'set {name} to zero')
         llama_model.state_dict()[name].copy_(torch.zeros_like(param))
+print("Finish the conversion of Qwen2 weights to LlaMA!")
 
 # 保存转换后的模型
+print("Saving the converted LlaMA...")
 llama_model.save_pretrained("qwen2_converted_llama")
