@@ -3,7 +3,10 @@ from typing import List, Optional, Tuple, Union
 import torch
 from transformers.generation.streamers import BaseStreamer
 
-device = "cuda" # the device to load the model onto
+# cuda is not exactly the same, because different result of cuda gemm kernel, detail example see
+# hf_example/merge_qkv.py
+# device = "cuda" 
+device = "cpu" # cpu is exacatly the same
 attn_impl = 'eager' # the attention implementation to use
 meta_instruction = ("You are an AI assistant whose name is InternLM (书生·浦语).\n"
 "- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory "
@@ -71,7 +74,7 @@ tokenizer = AutoTokenizer.from_pretrained("internlm/internlm2_5-7b-chat", trust_
 model = AutoModelForCausalLM.from_pretrained("internlm/internlm2_5-7b-chat", 
                                              torch_dtype=torch.bfloat16, 
                                              attn_implementation=attn_impl,
-                                             trust_remote_code=True).cuda()
+                                             trust_remote_code=True).to(device)
 model = model.eval()
 response_official_1, history = model.chat(tokenizer, prompt1, history=[], do_sample=False)
 print("###############1. 官方demo###############")
@@ -80,13 +83,13 @@ response_official_2, history = model.chat(tokenizer, prompt2, history=history, d
 print(f"User Input: {prompt2}\nInternLM2.5 Response: {response_official_2}")
 
 ###############2. 使用拆分出来的函数后###############
-# print("###############2. 使用拆分出来的函数后###############")
-# response_splitfunc_1, history = chat(model, tokenizer, prompt1, history=[], do_sample=False)
-# print(f"User Input: {prompt1}\nInternLM2.5 Response: {response_splitfunc_1}")
-# response_splitfunc_2, history = chat(model, tokenizer, prompt2, history=history, do_sample=False)
-# print(f"User Input: {prompt2}\nInternLM2.5 Response: {response_splitfunc_2}")
-# print(f'response1 equal: {response_official_1 == response_splitfunc_1}')
-# print(f'response2 equal: {response_official_2 == response_splitfunc_2}')
+print("###############2. 使用拆分出来的函数后###############")
+response_splitfunc_1, history = chat(model, tokenizer, prompt1, history=[], do_sample=False)
+print(f"User Input: {prompt1}\nInternLM2.5 Response: {response_splitfunc_1}")
+response_splitfunc_2, history = chat(model, tokenizer, prompt2, history=history, do_sample=False)
+print(f"User Input: {prompt2}\nInternLM2.5 Response: {response_splitfunc_2}")
+print(f'response1 equal: {response_official_1 == response_splitfunc_1}')
+print(f'response2 equal: {response_official_2 == response_splitfunc_2}')
 
 ###############3. 使用Converted LlaMA model + 分离出来的function###############
 llama_model = LlamaForCausalLM.from_pretrained(
@@ -113,11 +116,11 @@ with torch.no_grad():
     llama_detail_output = llama_model(input_ids = model_inputs.input_ids, output_hidden_states=True, output_attentions=True, return_dict = True)
 
     print(f'logits equal: {(detail_output["logits"] == llama_detail_output["logits"]).all()}')
-    torch.allclose(llama_detail_output['logits'], detail_output['logits'], atol=1e-5)
-    (llama_detail_output['hidden_states'][0] == detail_output['hidden_states'][0]).all()
-    (llama_detail_output['hidden_states'][1] == detail_output['hidden_states'][1]).all()
-    torch.allclose(llama_detail_output['hidden_states'][1], detail_output['hidden_states'][1], atol=1e-5)
-    (llama_detail_output['attentions'][0] == detail_output['attentions'][0]).all()
-    torch.allclose(llama_detail_output['attentions'][0], detail_output['attentions'][0], atol=1e-4)
+    print(torch.allclose(llama_detail_output['logits'].float(), detail_output['logits']))
+    print((llama_detail_output['hidden_states'][0] == detail_output['hidden_states'][0]).all())
+    print((llama_detail_output['hidden_states'][1] == detail_output['hidden_states'][1]).all())
+    print(torch.allclose(llama_detail_output['hidden_states'][1], detail_output['hidden_states'][1]))
+    print((llama_detail_output['attentions'][0] == detail_output['attentions'][0]).all())
+    print(torch.allclose(llama_detail_output['attentions'][0], detail_output['attentions'][0]))
     
     
