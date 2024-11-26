@@ -28,8 +28,9 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
     kv_dim = hidden_size // head_num * kv_head
     k_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * kv_dim
     v_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * kv_dim
-    o_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     softmax_output = DTYPES_BYTES['float32'] * batch_size * head_num * seq_len * seq_len
+    attn_out = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
+    o_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     if use_flash_attention:
         softmax_output = DTYPES_BYTES['float32'] * batch_size * head_num * seq_len * head_num
     norm_input = DTYPES_BYTES['float32'] * batch_size * seq_len * hidden_size * 2  # 2个 RMSNorm
@@ -37,7 +38,7 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
     mlp_up_output = DTYPES_BYTES['float16'] * batch_size * seq_len * immediate_size
     mlp_gate_output = DTYPES_BYTES['float16'] * batch_size * seq_len * immediate_size
     mlp_down_input = DTYPES_BYTES['float16'] * batch_size * seq_len * immediate_size
-    activation = qkv_input + q_proj + k_proj + v_proj + o_proj + softmax_output + norm_input + mlp_up_input + \
+    activation = qkv_input + q_proj + k_proj + v_proj + o_proj + attn_out + softmax_output + norm_input + mlp_up_input + \
         mlp_up_output + mlp_gate_output + mlp_down_input
     
     last_norm = DTYPES_BYTES['float32'] * batch_size * seq_len * hidden_size
@@ -52,6 +53,7 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
         print(f"Q_proj: {q_proj/GB} GB")
         print(f"K_proj: {k_proj/GB} GB")
         print(f"V_proj: {v_proj/GB} GB")
+        print(f"attn_out: {attn_out/GB} GB")
         print(f"O_proj: {o_proj/GB} GB")
         print(f"Softmax output: {softmax_output/GB} GB")
         print(f"RMSNorm input: {norm_input/GB} GB")
