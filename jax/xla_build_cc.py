@@ -8,9 +8,15 @@ ops = xla_client.ops
 
 """
 Use jax to build xla computation
+
 1. Test all-gather
 
-Ref:
+# Note:
+jax version      0.4.30
+jaxlib version   0.4.30
+pip install --upgrade jax==0.4.30 jaxlib==0.4.30+cpu -f https://storage.googleapis.com/jax-releases/jax_releases.html
+或者直接装最新的   pip install -U jax
+Ref: 
 https://github.com/alpa-projects/alpa/blob/b8078a9f75cb4c90cabb4550ee48c99ef394e209/alpa/mesh_profiling.py#L228
 https://github.com/alpa-projects/alpa/blob/b8078a9f75cb4c90cabb4550ee48c99ef394e209/playground/xla_builder/test_multi_host.py#L19
 https://github.com/alpa-projects/alpa/blob/b8078a9f75cb4c90cabb4550ee48c99ef394e209/playground/xla_builder/test_xla_builder.py#L104
