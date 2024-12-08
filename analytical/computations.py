@@ -184,7 +184,17 @@ if __name__ == '__main__':
         head_num=28, kv_head=4, immediate_size=18944, layer_num=28, lora_r=64)
     print(qwen2_computations['total']/TFLOPs)
     
-    
+    # llama3 70B, pretrain
+    batch_size, seq_len = 1, 8192
+    print(f'===== LLaMA3 70B pretrain ********* batch_size: {batch_size}, seq_len: {seq_len} =====')
+    llama3_computation = analyze_pretrain_computation(batch_size=batch_size, seq_len=seq_len, vocab_size=128256, hidden_size=8192, \
+        head_num=64, kv_head=8, immediate_size=28672, layer_num=80)
+    print(f"{llama3_computation['total']/TFLOPs: 0.4f} TFLOPs")
+    table = PrettyTable()
+    table.field_names = ["name", "TFLOPs"]
+    for k, v in llama3_computation.items():
+        table.add_row([k, f'{v/TFLOPs: 0.4f}'])
+    print(table)
 
 
 

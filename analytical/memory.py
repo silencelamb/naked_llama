@@ -32,7 +32,7 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
     attn_out = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     o_proj = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     if use_flash_attention:
-        softmax_output = DTYPES_BYTES['float32'] * batch_size * head_num * seq_len * head_num
+        softmax_output = DTYPES_BYTES['float32'] * batch_size * head_num * seq_len
     norm_input = DTYPES_BYTES['float32'] * batch_size * seq_len * hidden_size * 2  # 2个 RMSNorm
     mlp_up_input = DTYPES_BYTES['float16'] * batch_size * seq_len * hidden_size
     mlp_up_output = DTYPES_BYTES['float16'] * batch_size * seq_len * immediate_size
@@ -63,6 +63,7 @@ def llama_activation(head_num, kv_head, batch_size, seq_len, hidden_size, immedi
         print(f"MLP down input: {mlp_down_input/GB} GB")
 
         print(f"Activation size of One Transformer Block: {activation/GB} GB")
+        print(f"last_softmax: {last_softmax/GB} GB")
         print(f"Total Activation size: {total/GB} GB")
     return total/GB
 
@@ -77,21 +78,32 @@ if __name__ == '__main__':
     print('llama2 70B activations==============>')
     llama_activation(head_num=64, kv_head=8, batch_size=1, seq_len=4096, hidden_size=8192, \
         immediate_size=28672, layer_num=80, vocab_size=32000, is_print=False)
-    print('Qwen2 7B activations==============>')
-    llama_activation(head_num=28, kv_head=4, batch_size=256, seq_len=512, hidden_size=3584, \
-        immediate_size=18944, layer_num=28, vocab_size=152064)
-
-    print('Qwen2 7B activations==============>')
-    llama_activation(head_num=28, kv_head=4, batch_size=1, seq_len=1024, hidden_size=3584, \
-        immediate_size=18944, layer_num=28, vocab_size=152064)
+    print('llama3 70B activations==============>')
+    llama_activation(head_num=64, kv_head=8, batch_size=1, seq_len=8192, hidden_size=8192, \
+        immediate_size=28672, layer_num=80, vocab_size=128256, is_print=True, use_flash_attention=True)
     
-    print('Qwen2 7B activations==============>')
-    llama_activation(head_num=28, kv_head=4, batch_size=1, seq_len=2048, hidden_size=3584, \
-        immediate_size=18944, layer_num=28, vocab_size=152064)
-    print('Qwen2 7B activations==============>')
-    llama_activation(head_num=28, kv_head=4, batch_size=1, seq_len=4096, hidden_size=3584, \
-        immediate_size=18944, layer_num=28, vocab_size=152064)
+    print('llama3 70B activations==============>')
+    llama_activation(head_num=64, kv_head=8, batch_size=1, seq_len=1024, hidden_size=8192, \
+        immediate_size=28672, layer_num=80, vocab_size=128256, is_print=True, use_flash_attention=True)
 
-    print('Qwen2 7B activations==============>')
-    llama_activation(head_num=28, kv_head=4, batch_size=256, seq_len=512, hidden_size=3584, \
-        immediate_size=18944, layer_num=28, vocab_size=152064)
+    print('llama2 70B activations==============>')
+    llama_activation(head_num=64, kv_head=8, batch_size=1, seq_len=1024, hidden_size=8192, \
+        immediate_size=28672, layer_num=80, vocab_size=32000, is_print=True, use_flash_attention=True)
+    # print('Qwen2 7B activations==============>')
+    # llama_activation(head_num=28, kv_head=4, batch_size=256, seq_len=512, hidden_size=3584, \
+    #     immediate_size=18944, layer_num=28, vocab_size=152064)
+
+    # print('Qwen2 7B activations==============>')
+    # llama_activation(head_num=28, kv_head=4, batch_size=1, seq_len=1024, hidden_size=3584, \
+    #     immediate_size=18944, layer_num=28, vocab_size=152064)
+    
+    # print('Qwen2 7B activations==============>')
+    # llama_activation(head_num=28, kv_head=4, batch_size=1, seq_len=2048, hidden_size=3584, \
+    #     immediate_size=18944, layer_num=28, vocab_size=152064)
+    # print('Qwen2 7B activations==============>')
+    # llama_activation(head_num=28, kv_head=4, batch_size=1, seq_len=4096, hidden_size=3584, \
+    #     immediate_size=18944, layer_num=28, vocab_size=152064)
+
+    # print('Qwen2 7B activations==============>')
+    # llama_activation(head_num=28, kv_head=4, batch_size=256, seq_len=512, hidden_size=3584, \
+    #     immediate_size=18944, layer_num=28, vocab_size=152064)

@@ -160,6 +160,63 @@ def test_all_gather(backend, num_replicas):
         # 尝试多种可能的转换方法
         print(f"Device {i}:\n", out)
 
+def test_reduce_scatter(backend, num_replicas):
+    full_shape = (8, 2)
+    reduce_op = "add"
+    
+    # 构建计算图
+    c = xla_client.XlaBuilder("reduce_scatter_test")
+    x = parameter(c, 0, full_shape, np.float32)
+    channel_id = None
+    replica_groups = [list(range(num_replicas))]
+    result = _op_reduce_scatter(
+        x,
+        dtype=np.float32,
+        reduce_op=reduce_op,
+        replica_groups=replica_groups,
+        channel_id=channel_id
+    )
+    xla_computation = c.build(result)
+    
+    # 打印 HLO
+    print(xla_computation.as_hlo_text())
+    
+    # 新版本的compile要输入一个mlir module或者string，不支持xla_computation jax_lib=0.4.30
+    # 旧版本是直接输入xla_computation jax_lib=0.3.25
+    mhlo_module = xc._xla.mlir.xla_computation_to_mlir_module(xla_computation, False)
+    print("MHLO Module: \n", mhlo_module)
+    
+    # 编译选项
+    device_assignment = np.array([[i] for i in range(num_replicas)], dtype=np.int32)
+    device_assignment = xla_client.DeviceAssignment.create(device_assignment)
+    compile_options = xla_client.CompileOptions()
+    build_options = compile_options.executable_build_options
+    build_options.num_replicas = num_replicas
+    build_options.device_assignment = device_assignment
+    
+    # 编译计算图
+    executable = backend.compile(mhlo_module, compile_options)
+    
+    # 准备输入数据
+    input_data = np.ones(full_shape, dtype=np.float32)
+    device_inputs = [
+        backend.buffer_from_pyval(input_data, backend.devices()[i])
+        for i in range(num_replicas)
+    ]
+    
+    print("Device inputs:")
+    for i, inp in enumerate(device_inputs):
+        print(f"Device {i}:\n", inp)
+    
+    # 执行计算
+    outputs = executable.execute_sharded_on_local_devices(device_inputs)
+    
+    # 打印结果
+    print("Output shapes:", [out.shape for out in outputs])
+    print("Output values:")
+    for i, out in enumerate(outputs):
+        print(f"Device {i}:\n", out)
+        
 def test_sin_cos():
     def f(x):
         return jax.numpy.sin(jax.numpy.cos(x.T))
@@ -192,5 +249,6 @@ if __name__ == "__main__":
     
     print("Backend:", backend.platform)
     print("Device count:", backend.device_count())
-    test_all_gather(backend, num_replicas)
+    # test_all_gather(backend, num_replicas)
+    test_reduce_scatter(backend, num_replicas)
     # test_sin_cos()
