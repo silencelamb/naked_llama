@@ -2,9 +2,9 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from transformers import AutoTokenizer
 import torch
 
-# quantization_config=None is Necessary
-model = AutoModelForCausalLM.from_pretrained('DeepSeek-R1-3layers-new', torch_dtype=torch.bfloat16).cuda()
-tokenizer = AutoTokenizer.from_pretrained('DeepSeek-R1-3layers-new')
+model_dir = "DeepSeek-R1-Small-2layers"
+model = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
 prompt = "Who are u?"
 messages = []
