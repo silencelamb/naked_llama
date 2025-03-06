@@ -45,7 +45,7 @@ def mem_footprint_mat_absorb_mul(q_len, kv_len):
 
 # absorbed version full absorb
 def num_float_ops_mat_absorb_all(q_len, kv_len):
-    return (q_len * lora_rank_q * head_num * (head_dim_v + rope_dim) +  # from c_Q to q_pe and q_nope, corresponding to q_b_proj
+    return (q_len * lora_rank_q * head_num *  rope_dim +  # from c_Q to q_pe, corresponding to q_b_proj
             q_len * head_num * lora_rank_q * lora_rank_k +  # from c_Q to q_nope, corresponding to W_UQUK
             head_num * (q_len * (lora_rank_k + rope_dim) * kv_len + q_len * kv_len * lora_rank_k) +  # 128 heads MQA
             q_len * head_num * lora_rank_k * hidden_dim)  # from MHA output to output hidden states, corresponding to W_UV_O
@@ -53,7 +53,7 @@ def num_float_ops_mat_absorb_all(q_len, kv_len):
 def mem_footprint_mat_absorb_all(q_len, kv_len):
     return (q_len * lora_rank_q + lora_rank_q * head_num * rope_dim +  # q_lora, q_rope_weight
             q_len * (head_num * rope_dim) +  # qrope
-            head_num * hidden_dim * lora_rank_k +  # W_UQUK
+            head_num * lora_rank_q * lora_rank_k +  # W_UQUK
             kv_len * (lora_rank_k + rope_dim) +  # cached_k_lora
             head_num * q_len * (lora_rank_k + rope_dim) +  # 128 heads Q
             q_len * (head_num * lora_rank_k) +  # attn output
