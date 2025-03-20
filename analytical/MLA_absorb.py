@@ -237,6 +237,16 @@ plt.close(fig1)
 # Additional line plots for ratio trends
 fig2 = plt.figure(figsize=(20, 16))
 
+# Set global font size settings
+plt.rcParams.update({
+    'font.size': 16,
+    'axes.titlesize': 18,
+    'axes.labelsize': 16,
+    'xtick.labelsize': 14,
+    'ytick.labelsize': 14,
+    'legend.fontsize': 16
+})
+
 # Plot 1: Prefill Phase - Computational Cost Trends
 plt.subplot(2, 2, 1)
 plt.plot(plot_kv_lens, [1] * len(plot_kv_lens), 'k-', label='Vanilla')
