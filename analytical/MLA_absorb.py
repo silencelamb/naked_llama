@@ -21,10 +21,12 @@ def num_float_ops_vanilla(q_len, kv_len):
             head_num * (q_len * head_dim_qk * kv_len + q_len * kv_len * head_dim_v) +  # 128 heads MHA
             q_len * (head_num * head_dim_v) * hidden_dim)  # from MHA output to output hidden states, corresponding to o_proj
 
+# memory 访存
 def mem_footprint_vanilla(q_len, kv_len):
-    return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, q_up_weight
+    return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, W_UQ
+            q_len * (head_num * head_dim_qk) +  # q dim 192, 128 heads
             kv_len * (lora_rank_k + rope_dim) + lora_rank_k * (head_num * (head_dim_v + head_dim_v)) +  # cached_k_lora, W_UK, W_UV
-            head_num * (q_len * head_dim_qk + head_dim_qk * kv_len + head_dim_v * kv_len) +  # 128 heads MHA, q, k, v
+            kv_len * head_num * head_dim_qk  + kv_len * head_num * head_dim_v +  # k dim 192, v dim 128, 128 heads
             q_len * (head_num * head_dim_v) + (head_num * head_dim_v) * hidden_dim)  # attn_output, o_proj weight
 
 # absorbed version weight multiply
@@ -36,11 +38,11 @@ def num_float_ops_mat_absorb_mul(q_len, kv_len):
             q_len * head_num * head_dim_v * hidden_dim)  # from MHA output to output hidden states, corresponding to o_proj
 
 def mem_footprint_mat_absorb_mul(q_len, kv_len):
-    return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, q_up_weight
-            q_len * (head_num * head_dim_qk) +  # q dim 192
+    return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, W_UQ
+            q_len * (head_num * head_dim_qk) +  # q dim 192, 128 heads
             kv_len * (lora_rank_k + rope_dim) + lora_rank_k * (head_num * (head_dim_v + head_dim_v)) +  # cached_k_lora, W_UK, W_UV
-            head_num * (q_len * (lora_rank_k + rope_dim)) +  # 128 heads Q
-            q_len * head_num * lora_rank_k +  # atten output 512 dim
+            q_len * head_num * (lora_rank_k + rope_dim) +  # q dim 576, 128 heads, no kv mem
+            q_len * head_num * lora_rank_k +    # atten output 512 dim
             q_len * (head_num * head_dim_v) + (head_num * head_dim_v) * hidden_dim)  # attn_output, o_proj weight
 
 # absorbed version full absorb
@@ -52,11 +54,11 @@ def num_float_ops_mat_absorb_all(q_len, kv_len):
 
 def mem_footprint_mat_absorb_all(q_len, kv_len):
     return (q_len * lora_rank_q + lora_rank_q * head_num * rope_dim +  # q_lora, q_rope_weight
-            q_len * (head_num * rope_dim) +  # qrope
+            q_len * (head_num * rope_dim) +      # qrope
             head_num * lora_rank_q * lora_rank_k +  # W_UQUK
             kv_len * (lora_rank_k + rope_dim) +  # cached_k_lora
-            head_num * q_len * (lora_rank_k + rope_dim) +  # 128 heads Q
-            q_len * (head_num * lora_rank_k) +  # attn output
+            head_num * q_len * (lora_rank_k + rope_dim) +  # q dim 576, 128 heads, no kv mem
+            q_len * (head_num * lora_rank_k) +   # atten output 512 dim
             (head_num * lora_rank_k) * hidden_dim)  # W_UV_O
 
 # Test with different kv_len values
