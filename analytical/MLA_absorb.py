@@ -21,12 +21,21 @@ def num_float_ops_vanilla(q_len, kv_len):
             head_num * (q_len * head_dim_qk * kv_len + q_len * kv_len * head_dim_v) +  # 128 heads MHA
             q_len * (head_num * head_dim_v) * hidden_dim)  # from MHA output to output hidden states, corresponding to o_proj
 
-# memory 访存
+# memory 访存, flash attn
+def mem_footprint_vanilla_flash(q_len, kv_len):
+    return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, W_UQ
+            q_len * (head_num * head_dim_qk) +  # q dim 192, 128 heads
+            kv_len * (lora_rank_k + rope_dim) + lora_rank_k * (head_num * (head_dim_v + head_dim_v)) +  # cached_k_lora, W_UK, W_UV
+            kv_len * head_num * head_dim_qk  + kv_len * head_num * head_dim_v +  # k dim 192, v dim 128, 128 heads
+            q_len * (head_num * head_dim_v) + (head_num * head_dim_v) * hidden_dim)  # attn_output, o_proj weight
+
+# memory 访存, not flash attn
 def mem_footprint_vanilla(q_len, kv_len):
     return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, W_UQ
             q_len * (head_num * head_dim_qk) +  # q dim 192, 128 heads
             kv_len * (lora_rank_k + rope_dim) + lora_rank_k * (head_num * (head_dim_v + head_dim_v)) +  # cached_k_lora, W_UK, W_UV
             kv_len * head_num * head_dim_qk  + kv_len * head_num * head_dim_v +  # k dim 192, v dim 128, 128 heads
+            q_len * head_num * kv_len + # not flash attn, atten_score
             q_len * (head_num * head_dim_v) + (head_num * head_dim_v) * hidden_dim)  # attn_output, o_proj weight
 
 # absorbed version weight multiply
@@ -37,7 +46,7 @@ def num_float_ops_mat_absorb_mul(q_len, kv_len):
             q_len * head_num * lora_rank_k * head_dim_v +  # MHA output 512 dim => 128 dim, corresponding to W_UV_O
             q_len * head_num * head_dim_v * hidden_dim)  # from MHA output to output hidden states, corresponding to o_proj
 
-def mem_footprint_mat_absorb_mul(q_len, kv_len):
+def mem_footprint_mat_absorb_mul_flash(q_len, kv_len):
     return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, W_UQ
             q_len * (head_num * head_dim_qk) +  # q dim 192, 128 heads
             kv_len * (lora_rank_k + rope_dim) + lora_rank_k * (head_num * (head_dim_v + head_dim_v)) +  # cached_k_lora, W_UK, W_UV
@@ -45,6 +54,15 @@ def mem_footprint_mat_absorb_mul(q_len, kv_len):
             q_len * head_num * lora_rank_k +    # atten output 512 dim
             q_len * (head_num * head_dim_v) + (head_num * head_dim_v) * hidden_dim)  # attn_output, o_proj weight
 
+def mem_footprint_mat_absorb_mul(q_len, kv_len):
+    return (q_len * lora_rank_q + lora_rank_q * (head_num * head_dim_qk) +  # q_lora, W_UQ
+            q_len * (head_num * head_dim_qk) +  # q dim 192, 128 heads
+            kv_len * (lora_rank_k + rope_dim) + lora_rank_k * (head_num * (head_dim_v + head_dim_v)) +  # cached_k_lora, W_UK, W_UV
+            q_len * head_num * (lora_rank_k + rope_dim) +  # q dim 576, 128 heads, no kv mem
+            q_len * head_num * kv_len + # not flash attn, atten_score
+            q_len * head_num * lora_rank_k +    # atten output 512 dim
+            q_len * (head_num * head_dim_v) + (head_num * head_dim_v) * hidden_dim)  # attn_output, o_proj weight
+    
 # absorbed version full absorb
 def num_float_ops_mat_absorb_all(q_len, kv_len):
     return (q_len * lora_rank_q * head_num *  rope_dim +  # from c_Q to q_pe, corresponding to q_b_proj
@@ -52,7 +70,7 @@ def num_float_ops_mat_absorb_all(q_len, kv_len):
             head_num * (q_len * (lora_rank_k + rope_dim) * kv_len + q_len * kv_len * lora_rank_k) +  # 128 heads MQA
             q_len * head_num * lora_rank_k * hidden_dim)  # from MHA output to output hidden states, corresponding to W_UV_O
 
-def mem_footprint_mat_absorb_all(q_len, kv_len):
+def mem_footprint_mat_absorb_all_flash(q_len, kv_len):
     return (q_len * lora_rank_q + lora_rank_q * head_num * rope_dim +  # q_lora, q_rope_weight
             q_len * (head_num * rope_dim) +      # qrope
             head_num * lora_rank_q * lora_rank_k +  # W_UQUK
@@ -61,8 +79,20 @@ def mem_footprint_mat_absorb_all(q_len, kv_len):
             q_len * (head_num * lora_rank_k) +   # atten output 512 dim
             (head_num * lora_rank_k) * hidden_dim)  # W_UV_O
 
+def mem_footprint_mat_absorb_all(q_len, kv_len):
+    return (q_len * lora_rank_q + lora_rank_q * head_num * rope_dim +  # q_lora, q_rope_weight
+            q_len * (head_num * rope_dim) +      # qrope
+            head_num * lora_rank_q * lora_rank_k +  # W_UQUK
+            kv_len * (lora_rank_k + rope_dim) +  # cached_k_lora
+            head_num * q_len * (lora_rank_k + rope_dim) +  # q dim 576, 128 heads, no kv mem
+            q_len * head_num * kv_len + # not flash attn, atten_score
+            q_len * (head_num * lora_rank_k) +   # atten output 512 dim
+            (head_num * lora_rank_k) * hidden_dim)  # W_UV_O
+
+
 # Test with different kv_len values
-kv_lens = [8, 32, 128, 512, 1024, 2048, 4096, 10240, 20480, 64000, 102400]
+kv_lens = np.logspace(0, 17, num=18, base=2).astype(int)  # from 1 to 131072
+# kv_lens = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072]
 
 # Create results directory if it doesn't exist
 os.makedirs('results', exist_ok=True)
@@ -79,6 +109,8 @@ prefill_ops_wm_norm = []
 prefill_ops_fa_norm = []
 prefill_mem_wm_norm = []
 prefill_mem_fa_norm = []
+prefill_mem_wm_norm_flash = []
+prefill_mem_fa_norm_flash = []
 decode_ops_wm_norm = []
 decode_ops_fa_norm = []
 decode_mem_wm_norm = []
@@ -93,6 +125,12 @@ for kv_len in kv_lens:
     prefill_wm_ops_ratio = prefill_wm_ops / prefill_vanilla_ops
     prefill_fa_ops_ratio = prefill_fa_ops / prefill_vanilla_ops
     
+    prefill_vanilla_mem_flash = mem_footprint_vanilla_flash(kv_len, kv_len)
+    prefill_wm_mem_flash = mem_footprint_mat_absorb_mul_flash(kv_len, kv_len)
+    prefill_fa_mem_flash = mem_footprint_mat_absorb_all_flash(kv_len, kv_len)
+    prefill_wm_mem_ratio_flash = prefill_wm_mem_flash / prefill_vanilla_mem_flash
+    prefill_fa_mem_ratio_flash = prefill_fa_mem_flash / prefill_vanilla_mem_flash
+
     prefill_vanilla_mem = mem_footprint_vanilla(kv_len, kv_len)
     prefill_wm_mem = mem_footprint_mat_absorb_mul(kv_len, kv_len)
     prefill_fa_mem = mem_footprint_mat_absorb_all(kv_len, kv_len)
@@ -107,9 +145,9 @@ for kv_len in kv_lens:
     decode_wm_ops_ratio = decode_wm_ops / decode_vanilla_ops
     decode_fa_ops_ratio = decode_fa_ops / decode_vanilla_ops
     
-    decode_vanilla_mem = mem_footprint_vanilla(q_len, kv_len)
-    decode_wm_mem = mem_footprint_mat_absorb_mul(q_len, kv_len)
-    decode_fa_mem = mem_footprint_mat_absorb_all(q_len, kv_len)
+    decode_vanilla_mem = mem_footprint_vanilla_flash(q_len, kv_len)
+    decode_wm_mem = mem_footprint_mat_absorb_mul_flash(q_len, kv_len)
+    decode_fa_mem = mem_footprint_mat_absorb_all_flash(q_len, kv_len)
     decode_wm_mem_ratio = decode_wm_mem / decode_vanilla_mem
     decode_fa_mem_ratio = decode_fa_mem / decode_vanilla_mem
     
@@ -156,6 +194,8 @@ for kv_len in kv_lens:
     prefill_ops_fa_norm.append(prefill_fa_ops_ratio)
     prefill_mem_wm_norm.append(prefill_wm_mem_ratio)
     prefill_mem_fa_norm.append(prefill_fa_mem_ratio)
+    prefill_mem_wm_norm_flash.append(prefill_wm_mem_ratio_flash)
+    prefill_mem_fa_norm_flash.append(prefill_fa_mem_ratio_flash)
     decode_ops_wm_norm.append(decode_wm_ops_ratio)
     decode_ops_fa_norm.append(decode_fa_ops_ratio)
     decode_mem_wm_norm.append(decode_wm_mem_ratio)
@@ -237,7 +277,7 @@ bar_img_str = fig_to_base64(fig1)
 plt.close(fig1)
 
 # Additional line plots for ratio trends
-fig2 = plt.figure(figsize=(20, 16))
+fig2 = plt.figure(figsize=(30, 16))
 
 # Set global font size settings
 plt.rcParams.update({
@@ -250,7 +290,7 @@ plt.rcParams.update({
 })
 
 # Plot 1: Prefill Phase - Computational Cost Trends
-plt.subplot(2, 2, 1)
+plt.subplot(2, 3, 1)
 plt.plot(plot_kv_lens, [1] * len(plot_kv_lens), 'k-', label='Vanilla')
 plt.plot(plot_kv_lens, prefill_ops_wm_norm, 'b-o', label='Weight Multiply')
 plt.plot(plot_kv_lens, prefill_ops_fa_norm, 'r-^', label='Full Absorb')
@@ -262,19 +302,31 @@ plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend()
 
 # Plot 2: Prefill Phase - Memory Footprint Trends
-plt.subplot(2, 2, 2)
+plt.subplot(2, 3, 2)
 plt.plot(plot_kv_lens, [1] * len(plot_kv_lens), 'k-', label='Vanilla')
 plt.plot(plot_kv_lens, prefill_mem_wm_norm, 'b-o', label='Weight Multiply')
 plt.plot(plot_kv_lens, prefill_mem_fa_norm, 'r-^', label='Full Absorb')
 plt.xlabel('KV Length (log scale)')
 plt.ylabel('Normalized Memory (Vanilla = 1)')
-plt.title('Prefill Phase - Memory Footprint Trends')
+plt.title('Prefill Phase - Memory Footprint Trends(Not Flash-Attn)')
 plt.xscale('log')
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend()
 
-# Plot 3: Decode Phase - Computational Cost Trends
-plt.subplot(2, 2, 3)
+# Plot 3: Prefill Phase - Memory Footprint Trends
+plt.subplot(2, 3, 3)
+plt.plot(plot_kv_lens, [1] * len(plot_kv_lens), 'k-', label='Vanilla')
+plt.plot(plot_kv_lens, prefill_mem_wm_norm_flash, 'b-o', label='Weight Multiply')
+plt.plot(plot_kv_lens, prefill_mem_fa_norm_flash, 'r-^', label='Full Absorb')
+plt.xlabel('KV Length (log scale)')
+plt.ylabel('Normalized Memory (Vanilla = 1)')
+plt.title('Prefill Phase - Memory Footprint Trends(Flash-Attn)')
+plt.xscale('log')
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend()
+
+# Plot 4: Decode Phase - Computational Cost Trends
+plt.subplot(2, 3, 4)
 plt.plot(plot_kv_lens, [1] * len(plot_kv_lens), 'k-', label='Vanilla')
 plt.plot(plot_kv_lens, decode_ops_wm_norm, 'b-o', label='Weight Multiply')
 plt.plot(plot_kv_lens, decode_ops_fa_norm, 'r-^', label='Full Absorb')
@@ -285,8 +337,8 @@ plt.xscale('log')
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.legend()
 
-# Plot 4: Decode Phase - Memory Footprint Trends
-plt.subplot(2, 2, 4)
+# Plot 5: Decode Phase - Memory Footprint Trends
+plt.subplot(2, 3, 5)
 plt.plot(plot_kv_lens, [1] * len(plot_kv_lens), 'k-', label='Vanilla')
 plt.plot(plot_kv_lens, decode_mem_wm_norm, 'b-o', label='Weight Multiply')
 plt.plot(plot_kv_lens, decode_mem_fa_norm, 'r-^', label='Full Absorb')
