@@ -110,6 +110,7 @@ tp_dp_overheads_decode = [tp_with_dp_attn["overhead_func"](1, TP_size, 'decode')
 tp_dp_benefits = [tp_with_dp_attn["benifit_func"](kv_len, TP_size) for kv_len in kv_lens]
 
 print(f"Pure DP Overheads : {pure_dp_overheads[0]/us} us")
+print(f"Pure DP Overheads H100 : {pure_dp_overheads_H100[0]/us} us")
 print(f"TP DP Overheads (Decode) : {tp_dp_overheads_decode[-1]/us} us")
 print(f"TP DP Benefits: {tp_dp_benefits[-1]/us} us")
 
