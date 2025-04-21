@@ -29,12 +29,12 @@ lora_rank_q = 1536
 num_layers = 61
 
 
-def benifit(kv_len, TP_size):
+def benifit(kv_len, TP_size, bw):
     # 应该是只在decode有收益
     # prefill时，用native版本，本身是MHA，DP-attn不会提高KV的数据复用
     # 如果prefill时，用absorb版本呢？也许也挺好？
     kv_cache = kv_len * (lora_rank_k + rope_dim) * num_layers * Batch_size
-    kv_ddr_time = kv_cache * 2 /DDR_BW * (1-1/TP_size)  # 每个DDR都读取完整的kv_cache -> 每个DDR只读取1/TP_size的kv_cache
+    kv_ddr_time = kv_cache * 2 /bw * (1-1/TP_size)  # 每个DDR都读取完整的kv_cache -> 每个DDR只读取1/TP_size的kv_cache
     return kv_ddr_time
 
 # SGLang version
@@ -61,7 +61,7 @@ def pure_dp_overhead(q_len, TP_size, bw=DDR_BW):
     return overhead_time * num_layers
 
 pure_dp_dp_attn["overhead_func"] = lambda q_len, TP_size, bw: pure_dp_overhead(q_len, TP_size, bw)
-pure_dp_dp_attn["benifit_func"] = lambda kv_len, TP_size: benifit(kv_len, TP_size)
+pure_dp_dp_attn["benifit_func"] = lambda kv_len, TP_size, bw: benifit(kv_len, TP_size, bw)
 
 
 # Google version
@@ -88,7 +88,7 @@ def tp_dp_overhead(q_len, TP_size, stage='prefill'):
     return comm_time * num_layers
 
 tp_with_dp_attn["overhead_func"] = lambda q_len, TP_size, stage: tp_dp_overhead(q_len, TP_size, stage)
-tp_with_dp_attn["benifit_func"] = lambda kv_len, TP_size: benifit(kv_len, TP_size)
+tp_with_dp_attn["benifit_func"] = lambda kv_len, TP_size, bw: benifit(kv_len, TP_size, bw)
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -100,14 +100,15 @@ kv_lens = q_lens.copy()
 # 计算Pure DP方法的开销和收益
 pure_dp_overheads = [pure_dp_dp_attn["overhead_func"](q_len, TP_size, DDR_BW) for q_len in q_lens]
 pure_dp_overheads_H100 = [pure_dp_dp_attn["overhead_func"](q_len, TP_size, HBM_BW) for q_len in q_lens]
-pure_dp_benefits = [pure_dp_dp_attn["benifit_func"](kv_len, TP_size) for kv_len in kv_lens]
+pure_dp_benefits = [pure_dp_dp_attn["benifit_func"](kv_len, TP_size, DDR_BW) for kv_len in kv_lens]
 
 # 计算TP with DP方法的开销和收益
 tp_dp_overheads_prefill = [tp_with_dp_attn["overhead_func"](q_len, TP_size, 'prefill') for q_len in q_lens]
 # 对于decode，我们使用q_len=1，因为这是典型的自回归生成场景
 tp_dp_overheads_decode = [tp_with_dp_attn["overhead_func"](1, TP_size, 'decode') for _ in q_lens]
 
-tp_dp_benefits = [tp_with_dp_attn["benifit_func"](kv_len, TP_size) for kv_len in kv_lens]
+tp_dp_benefits = [tp_with_dp_attn["benifit_func"](kv_len, TP_size, DDR_BW) for kv_len in kv_lens]
+tp_dp_benefits_H100 = [tp_with_dp_attn["benifit_func"](kv_len, TP_size, HBM_BW) for kv_len in kv_lens]
 
 print(f"Pure DP Overheads : {pure_dp_overheads[0]/us} us")
 print(f"Pure DP Overheads H100 : {pure_dp_overheads_H100[0]/us} us")
@@ -131,10 +132,11 @@ plt.legend()
 
 # 2. 新增图表：Pure DP Overheads、TP DP Overheads (Decode)和TP DP Benefits比较
 plt.subplot(1, 2, 2)
-plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label='Pure DP Overheads')
-plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads_H100], 'o-', label='Pure DP Overheads_H100')
+plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label='Pure DP Overheads (Ours)')
+# plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads_H100], 'o-', label='Pure DP Overheads (H100)')
 plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_decode], '^-', label='TP+DP Overheads (Decode)')
-plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits], 's-', label='TP+DP Benefits')
+plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits], 's-', label='TP+DP Benefits (Ours)')
+# plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits_H100], 's-', label='TP+DP Benefits (H100)')
 plt.xlabel('Sequence Length')
 plt.ylabel('Time (μs)')
 plt.title('Comparison of Overheads and Benefits')
