@@ -1,6 +1,4 @@
-from transformers import AutoConfig, AutoModelForCausalLM
 from transformers import AutoTokenizer
-import torch
 
 tokenizer = AutoTokenizer.from_pretrained('deepseek-ai/DeepSeek-R1', trust_remote_code=True)
 
