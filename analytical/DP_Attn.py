@@ -1,16 +1,30 @@
 # DeepSeek DP attn优化分析
-
-TP_size = 16
-EP_size = 4
-Batch_size = TP_size
+# 该脚本用于分析DeepSeek DP attn优化的性能
+# 包括Pure DP和TP with DP两种方法的开销和收益对比
 
 # hardware parameters
 GB = 1024 * 1024 * 1024
 us = 1e-6 # 1us
-C2C_latency = 8 * us
-C2C_BW = 50 * 0.4 * GB
-DDR_BW = 120 * GB
-HBM_BW = 3.35 * 0.9 * 1024 * GB
+
+HW = "TX81"  # "TX81" "H100" or "A100"
+if HW == "H100":
+    TP_size = 8
+    C2C_latency = 10 * us
+    C2C_BW = 450 * 0.7 * GB
+    DDR_BW = 3.35 * 0.9 * 1024 * GB
+elif HW == "TX81":
+    TP_size = 32
+    C2C_latency = 8 * us
+    C2C_BW = 50 * 0.4 * GB
+    DDR_BW = 120 * GB
+elif HW == "A100":
+    TP_size = 8
+    C2C_latency = 10 * us
+    C2C_BW = 300 * 0.7 * GB
+    DDR_BW = 2 * 0.9 * 1024 * GB
+
+Batch_per_DP = 1  # 每个DP的batch数
+Batch_size = TP_size * Batch_per_DP
 
 Parallel_COMM_TimeStep = {
     8: 3,
@@ -99,7 +113,6 @@ kv_lens = q_lens.copy()
 
 # 计算Pure DP方法的开销和收益
 pure_dp_overheads = [pure_dp_dp_attn["overhead_func"](q_len, TP_size, DDR_BW) for q_len in q_lens]
-pure_dp_overheads_H100 = [pure_dp_dp_attn["overhead_func"](q_len, TP_size, HBM_BW) for q_len in q_lens]
 pure_dp_benefits = [pure_dp_dp_attn["benifit_func"](kv_len, TP_size, DDR_BW) for kv_len in kv_lens]
 
 # 计算TP with DP方法的开销和收益
@@ -108,10 +121,8 @@ tp_dp_overheads_prefill = [tp_with_dp_attn["overhead_func"](q_len, TP_size, 'pre
 tp_dp_overheads_decode = [tp_with_dp_attn["overhead_func"](1, TP_size, 'decode') for _ in q_lens]
 
 tp_dp_benefits = [tp_with_dp_attn["benifit_func"](kv_len, TP_size, DDR_BW) for kv_len in kv_lens]
-tp_dp_benefits_H100 = [tp_with_dp_attn["benifit_func"](kv_len, TP_size, HBM_BW) for kv_len in kv_lens]
 
 print(f"Pure DP Overheads : {pure_dp_overheads[0]/us} us")
-print(f"Pure DP Overheads H100 : {pure_dp_overheads_H100[0]/us} us")
 print(f"TP DP Overheads (Decode) : {tp_dp_overheads_decode[-1]/us} us")
 print(f"TP DP Benefits: {tp_dp_benefits[-1]/us} us")
 
@@ -124,22 +135,20 @@ plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label='Pure DP')
 plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_prefill], 's-', label='TP+DP (Prefill)')
 plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_decode], '^-', label='TP+DP (Decode)')
 plt.xlabel('Query Length')
-plt.ylabel('Overhead (μs)')
-plt.title('Overhead Comparison')
+plt.ylabel(f'Overhead (μs)')
+plt.title(f'Overhead Comparison({HW})')
 plt.grid(True, which="both", ls="--")
 plt.legend()
 
 
 # 2. 新增图表：Pure DP Overheads、TP DP Overheads (Decode)和TP DP Benefits比较
 plt.subplot(1, 2, 2)
-plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label='Pure DP Overheads (Ours)')
-# plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads_H100], 'o-', label='Pure DP Overheads (H100)')
-plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_decode], '^-', label='TP+DP Overheads (Decode)')
-plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits], 's-', label='TP+DP Benefits (Ours)')
-# plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits_H100], 's-', label='TP+DP Benefits (H100)')
+plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label=f'Pure DP Overheads)')
+plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_decode], '^-', label=f'TP+DP Overheads (Decode)')
+plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits], 's-', label=f'TP+DP Benefits)')
 plt.xlabel('Sequence Length')
-plt.ylabel('Time (μs)')
-plt.title('Comparison of Overheads and Benefits')
+plt.ylabel(f'Time (μs)')
+plt.title(f'Comparison of Overheads and Benefits ({HW})')
 plt.grid(True, which="both", ls="--")
 plt.legend()
 
