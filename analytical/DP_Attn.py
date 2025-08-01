@@ -6,7 +6,7 @@
 GB = 1024 * 1024 * 1024
 us = 1e-6 # 1us
 
-HW = "H100"  # "TX81" "H100" or "A100"
+HW = "TX81"  # "TX81" "H100" or "A100"
 if HW == "H100":
     TP_size = 8
     C2C_latency = 2 * us
@@ -23,7 +23,7 @@ elif HW == "A100":
     C2C_BW = 300 * 0.7 * GB
     DDR_BW = 2 * 0.9 * 1024 * GB
 
-Batch_per_DP = 4  # 每个DP的batch数
+Batch_per_DP = 1  # 每个DP的batch数
 Batch_size = TP_size * Batch_per_DP
 
 Parallel_COMM_TimeStep = {
@@ -109,7 +109,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # 计算不同q_len下的overhead和benefit
-q_lens = np.logspace(0, 15, num=18, base=2).astype(int)  # 从1到32768的2的幂
+q_lens = 2 ** np.arange(0, 16+1) # 从1到65536的2的幂
 kv_lens = q_lens.copy()
 
 # 计算Pure DP方法的开销和收益
@@ -123,30 +123,22 @@ tp_dp_overheads_decode = [tp_with_dp_attn["overhead_func"](1, TP_size, 'decode')
 
 tp_dp_benefits = [tp_with_dp_attn["benifit_func"](kv_len, TP_size, DDR_BW) for kv_len in kv_lens]
 
-print(f"Pure DP Overheads : {pure_dp_overheads[0]/us} us")
-print(f"TP DP Overheads (Decode) : {tp_dp_overheads_decode[-1]/us} us")
-print(f"TP DP Benefits: {tp_dp_benefits[-1]/us} us")
+for i in range(len(q_lens)):
+    print(f"Q_len: {q_lens[i]}, Pure DP Overhead: {pure_dp_overheads[i]/us:.2f} us, "
+          f"TP DP Overhead (Prefill): {tp_dp_overheads_prefill[i]/us:.2f} us, "
+          f"TP DP Overhead (Decode): {tp_dp_overheads_decode[i]/us:.2f} us, "
+          f"Benefit: {tp_dp_benefits[i]/us:.2f} us")
+
 
 # 创建绘图数据
-plt.figure(figsize=(20, 10))  # 增加高度以适应额外的图表
+plt.figure(figsize=(10, 10))  # 增加高度以适应额外的图表
 
-# 1. 绘制Overhead对比
-plt.subplot(1, 2, 1)
-plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label='Pure DP')
-plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_prefill], 's-', label='TP+DP (Prefill)')
-plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_decode], '^-', label='TP+DP (Decode)')
-plt.xlabel('Query Length')
-plt.ylabel(f'Overhead (μs)')
-plt.title(f'Overhead Comparison({HW})')
-plt.grid(True, which="both", ls="--")
-plt.legend()
+# Pure DP Overheads、TP DP Overhead (Prefill)、TP DP Overheads (Decode)和TP DP Benefits比较
 
-
-# 2. 新增图表：Pure DP Overheads、TP DP Overheads (Decode)和TP DP Benefits比较
-plt.subplot(1, 2, 2)
-plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label=f'Pure DP Overheads)')
+plt.loglog(q_lens, [o*1e6 for o in pure_dp_overheads], 'o-', label=f'Pure DP Overheads')
+plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_prefill], 'd-', label='TP+DP Overheads (Prefill)')
 plt.loglog(q_lens, [o*1e6 for o in tp_dp_overheads_decode], '^-', label=f'TP+DP Overheads (Decode)')
-plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits], 's-', label=f'TP+DP Benefits)')
+plt.loglog(kv_lens, [b*1e6 for b in tp_dp_benefits], 's-', label=f'DP Attn Benefits')
 plt.xlabel('Sequence Length')
 plt.ylabel(f'Time (μs)')
 plt.title(f'Comparison of Overheads and Benefits ({HW})')
