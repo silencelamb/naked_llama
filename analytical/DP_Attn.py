@@ -6,10 +6,10 @@
 GB = 1024 * 1024 * 1024
 us = 1e-6 # 1us
 
-HW = "TX81"  # "TX81" "H100" or "A100"
+HW = "H100"  # "TX81" "H100" or "A100"
 if HW == "H100":
     TP_size = 8
-    C2C_latency = 10 * us
+    C2C_latency = 2 * us
     C2C_BW = 450 * 0.7 * GB
     DDR_BW = 3.35 * 0.9 * 1024 * GB
 elif HW == "TX81":
@@ -19,11 +19,11 @@ elif HW == "TX81":
     DDR_BW = 120 * GB
 elif HW == "A100":
     TP_size = 8
-    C2C_latency = 10 * us
+    C2C_latency = 2 * us
     C2C_BW = 300 * 0.7 * GB
     DDR_BW = 2 * 0.9 * 1024 * GB
 
-Batch_per_DP = 1  # 每个DP的batch数
+Batch_per_DP = 4  # 每个DP的batch数
 Batch_size = TP_size * Batch_per_DP
 
 Parallel_COMM_TimeStep = {
@@ -66,9 +66,9 @@ total_weight = W_UQ + W_QR + W_UK + W_UV + W_O
 def pure_dp_overhead(q_len, TP_size, bw=DDR_BW):
     ddr_time = total_weight * 2 * (TP_size - 1) / TP_size / bw
     o_activation_num = q_len * hidden_dim * Batch_size
-    # 少了一个all-reduce
-    # 但是多了1个all-gather，或者说多了all-to-all到专家之后的broad-cast
-    # 假设两者抵消
+    # 相比TP 少了一个all-reduce
+    # 但是多了1个all-gather（因为MoE是TP，需要所有激活），或者说多了all-to-all到专家之后的broad-cast
+    # 假设两者抵消 （因为如果是parallel这种的话， all-gather和all-reduce是差不多开销）
     all_reduce_time = 2 * (TP_size - 1) * C2C_latency + 2 * o_activation_num / C2C_BW * 2
     # overhead_time = ddr_time - all_reduce_time
     overhead_time = ddr_time
@@ -93,12 +93,13 @@ def tp_dp_overhead(q_len, TP_size, stage='prefill'):
         # 在decode模式下，我们通常关心单token生成的情况
         q_comm = q_len * head_num * (lora_rank_k + rope_dim)
         total_comm = q_comm
-    # 一般 Batch_size/TP_size = 1
-    total_comm = total_comm * Batch_size/TP_size
+        
+    total_comm = total_comm * Batch_size/TP_size  # 等价这么大shape的all-gather
     ring_comm_time = total_comm * 2 / C2C_BW + (TP_size - 1)  * C2C_latency
     parallel_comm_time = (total_comm * 2 / C2C_BW + C2C_latency) * Parallel_COMM_TimeStep[TP_size]
     comm_time = min(ring_comm_time, parallel_comm_time)
     comm_time = comm_time * 2 # 2次 all-to-all
+    # O之后的TP的all-reduce还是在的
     return comm_time * num_layers
 
 tp_with_dp_attn["overhead_func"] = lambda q_len, TP_size, stage: tp_dp_overhead(q_len, TP_size, stage)
