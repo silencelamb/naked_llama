@@ -17,16 +17,21 @@ print("Loading config from deepseek-ai/DeepSeek-V4-Pro...")
 config = AutoConfig.from_pretrained('deepseek-ai/DeepSeek-V4-Pro', trust_remote_code=True)
 
 # Modify config: only change layers and experts, keep everything else
-config.num_hidden_layers = 4
-config.n_routed_experts = 8
-config.compress_ratios = [128, 128, 4, 128, 0]  # 4 layers + 1 nextn
+config.num_hidden_layers = 6
+config.n_routed_experts = 32
+config.hidden_size = 500
+config.moe_intermediate_size = 300
+
+config.compress_ratios = [128, 128, 4, 128, 4, 128, 0]  # 6 layers + 1 nextn
 config.layer_types = [
     "heavily_compressed_attention",
     "heavily_compressed_attention",
     "compressed_sparse_attention",
     "heavily_compressed_attention",
+    "compressed_sparse_attention",
+    "heavily_compressed_attention",
 ]
-config.mlp_layer_types = ["hash_moe", "hash_moe", "hash_moe", "moe"]
+config.mlp_layer_types = ["hash_moe", "hash_moe", "hash_moe", "moe", "moe", "moe"]
 del config.quantization_config
 del config.expert_dtype
 
@@ -54,7 +59,7 @@ with torch.no_grad():
     # Test inference
     print("\nTesting inference...")
     prompt = "Who are you?"
-    prompt_tokens = tokenizer(prompt, return_tensors="pt").input_ids
+    prompt_tokens = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
     generated_ids = model.generate(prompt_tokens, max_new_tokens=50, do_sample=False)
     generated_ids = [
         output_ids[len(input_ids):]
