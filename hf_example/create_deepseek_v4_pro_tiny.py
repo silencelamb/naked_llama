@@ -53,7 +53,7 @@ with torch.no_grad():
 
     # Save model
     print(f"Saving model to {save_directory}...")
-    model.save_pretrained(save_directory)
+    model.save_pretrained(save_directory, save_original_format=False)
     print("Model saved.")
 
     # Test inference
